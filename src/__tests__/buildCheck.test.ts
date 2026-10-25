@@ -29,6 +29,15 @@ describe('BuildCheck', () => {
         expect(c.beforeFinalize(agent)).toBeUndefined();
     });
 
+    it('reads the tool names as OpenClaw sends them to after_tool_call, in lower case', () => {
+        const c = check();
+        c.afterToolCall(call('addpatch', { project: 'ProbeBuff', records: ['IronSword'] }), agent);
+        c.afterToolCall(call('editrecord', { project: 'ProbeBuff', record: 'IronSword', set: [] }), agent);
+        expect(c.beforeFinalize(agent)!.reason).toBe('Changed and not built since: ProbeBuff.');
+        c.afterToolCall(call('buildproject', { project: 'ProbeBuff' }), agent);
+        expect(c.beforeFinalize(agent)).toBeUndefined();
+    });
+
     it('counts a change after the build again', () => {
         const c = check();
         c.afterToolCall(call('buildProject', { project: 'FlameBlade' }), agent);

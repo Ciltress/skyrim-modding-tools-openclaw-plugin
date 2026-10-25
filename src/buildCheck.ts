@@ -21,10 +21,13 @@ export interface FinalizeRevision {
     retry: { instruction: string; idempotencyKey: string; maxAttempts: number };
 }
 
-/** The tools that change a project's text without a file tool. */
-const PROJECT_CHANGES = new Set(['addPatch', 'editRecord']);
+/**
+ * The tools that change a project's text without a file tool, in lower case: OpenClaw's after_tool_call names a tool
+ * so (`editrecord`), and with `editRecord` here the check never fired.
+ */
+const PROJECT_CHANGES = new Set(['addpatch', 'editrecord']);
 /** The tools whose success means the project's plugin was written from its text. */
-const PROJECT_BUILDS = new Set(['buildProject', 'deployProject']);
+const PROJECT_BUILDS = new Set(['buildproject', 'deployproject']);
 /** OpenClaw's file tools, and where a call names its file. */
 const FILE_TOOLS = new Set(['write', 'edit', 'apply_patch']);
 
@@ -41,6 +44,12 @@ const MAX_RUNS = 200;
  * buildProject or deployProject of it that succeeded. Before the run's answer, a project still changed asks the
  * model, once, to build it. The MCP server's nearest equivalent is its answers' nextStep lines, which say to
  * build next.
+ *
+ * OpenClaw 2026.10.7 does not make that pass in such a run: it revises only a run whose every call it could replay —
+ * its own `read`, `ls`, `web_search` and the like — and a plugin tool's call or a `write` is none of those. It logs
+ * "before_agent_finalize requested revision after potential side effects; not rewinding" and lets the answer stand
+ * (seen 2026-10-25, the gateway's embedded runner and `agent exec` alike). So the check logs what it asked for, and
+ * the eval counts both.
  */
 export class BuildCheck {
     private readonly runs = new Map<string, Map<string, string>>();
@@ -62,12 +71,13 @@ export class BuildCheck {
         if (!runId) return;
 
         const named = typeof event.params?.project === 'string' ? event.params.project.trim() : '';
-        if (PROJECT_BUILDS.has(event.toolName)) {
+        const tool = event.toolName.toLowerCase();
+        if (PROJECT_BUILDS.has(tool)) {
             if (named) this.runs.get(runId)?.delete(named.toLowerCase());
             return;
         }
-        const changed = PROJECT_CHANGES.has(event.toolName) ? (named ? [named] : [])
-            : FILE_TOOLS.has(event.toolName) ? this.projectsWritten(event.toolName, event.params)
+        const changed = PROJECT_CHANGES.has(tool) ? (named ? [named] : [])
+            : FILE_TOOLS.has(tool) ? this.projectsWritten(tool, event.params)
                 : [];
         if (!changed.length) return;
         const run = this.run(runId);

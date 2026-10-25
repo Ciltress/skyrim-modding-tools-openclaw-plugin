@@ -17,6 +17,7 @@
     "manifest": "node scripts/write-manifest.mjs",
     "test": "vitest run",
     "test:types": "node scripts/link-openclaw.mjs && tsc -p tsconfig.json --noEmit",
+    "eval": "node scripts/eval.mjs",
     "build:helper": "npm --prefix node_modules/skyrim-modding-tools-core run build:helper",
     "check:helper": "npm --prefix node_modules/skyrim-modding-tools-core run check:helper"
   },

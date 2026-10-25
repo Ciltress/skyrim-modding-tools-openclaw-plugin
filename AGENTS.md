@@ -27,6 +27,10 @@ scripts/
   link-openclaw.mjs   node_modules/openclaw -> the installed OpenClaw (types; the gateway supplies the SDK)
   copy-skills.mjs     the core's skills into skills/, in place (the gateway watches that folder)
   write-manifest.mjs  writes openclaw.plugin.json from dist/
+  eval.mjs            the local-model eval: tasks, checks, the record of a round (npm run eval)
+  eval-openclaw.mjs   its session: a copy of the user's OpenClaw config, a proxy before Ollama, `agent exec`
+  eval-yaml.mjs       reads the record files a run leaves
+  __tests__/          vitest, plain JavaScript, for the eval's session
 openclaw.plugin.json  committed, generated: OpenClaw reads it before loading any code
 ```
 
@@ -64,6 +68,25 @@ bug: an entry registering nothing did the same); 2026.10.7 reloads cleanly.
 
 A changed config schema needs a gateway restart, not a reload: the running gateway checks the config against the
 schema it loaded, refuses the new fields as invalid, and so refuses the reload that would bring the new schema.
+
+Hook events name a tool in lower case (`editrecord`): compare names case-blind. The build check's extra pass never
+happens in a run that called a plugin tool or wrote a file — OpenClaw revises only runs it could replay — so the
+check only logs its request (buildCheck.ts).
+
+## The eval
+
+```bash
+npm run build
+npm run eval -- --openclaw-agent skyrim-e4b --runs 1 --authoring-runs 5 --detailed
+```
+
+It runs each task through `openclaw agent exec` on a copy of the user's OpenClaw config (eval-openclaw.mjs says
+what it changes), with this checkout's `dist/`, and prints the entry for `docs/research/local-model-evals.md`
+beside the repositories, where every round is recorded. The output is a local model's: read the transcripts for
+what the tools or their answers could do better. `agent exec` loads plugins in registrationMode `discovery` (tools
+and hooks run, the service does not; the helper ends with the run) and takes the `coding` tool profile where the
+config sets none, which hides every native plugin tool — the session config sets `full`, what an unset profile is
+in the gateway. The config copy holds the Nexus key: it lives in a temp folder of its own, deleted at the end.
 
 ## Care with a real backend
 

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { callRecord, writeSessionConfig } from '../eval-openclaw.mjs';
+import { callRecord, failureCodes, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -144,5 +144,17 @@ describe('callRecord', () => {
         const record = callRecord({ function: { name: 'openclaw_tool_call', arguments: { id: 'buildProject', args: { project: 'A' } } } }, 0, tools);
         expect(record).toMatchObject({ name: 'buildProject', args: { project: 'A' }, via: 'openclaw_tool_call' });
         expect(callRecord({ function: { name: 'tool_call', arguments: { id: 'memory_get' } } }, 0, tools).name).toBe('tool_call');
+    });
+});
+
+describe('failureCodes', () => {
+    it('reads each failed call\'s code from OpenClaw\'s log, by tool and in order, a message of several lines too', () => {
+        const log = [
+            '[tools] buildproject failed: Not built: C:\\Projects\\plugin\\Spells\\StormBolt.yaml [code -32602] params={"project":"StormBolt"}',
+            '[tools] edit failed: Could not find the text params={"path":"a"}',
+            '[tools] readrecord failed: No record\nnamed X [code -32603] params={}',
+            '[tools] buildproject failed: Not built: 1 field(s) [code -32602] params={"project":"A"}'
+        ].join('\n');
+        expect(failureCodes(log)).toEqual(new Map([['buildproject', [-32602, -32602]], ['readrecord', [-32603]]]));
     });
 });

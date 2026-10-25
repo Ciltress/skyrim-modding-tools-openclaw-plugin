@@ -1,7 +1,7 @@
-import { PermanentBackendError, SessionExpiredError, createHandlers, type AppBackend } from 'skyrim-modding-tools-core';
+import { PermanentBackendError, SessionExpiredError, ToolError, ToolErrorCode, createHandlers, type AppBackend } from 'skyrim-modding-tools-core';
 import { fakeBackend } from 'skyrim-modding-tools-core/testing';
 import { pluginProduct } from '../settings.js';
-import { SkyrimTools, failureText, type ToolApi } from '../tools.js';
+import { SkyrimTools, failure, failureText, type ToolApi } from '../tools.js';
 
 /**
  * The core's tools as OpenClaw tools: the names, what OpenClaw is told about each, what a call answers, and the
@@ -76,12 +76,18 @@ describe('a call', () => {
         expect(result.details).toEqual({});
     });
 
-    it('fails with the MCP server\'s JSON, without the MCP SDK\'s "MCP error" prefix', async () => {
+    it('fails with the core\'s message as plain text, its code for OpenClaw\'s log alone', async () => {
         const { tool } = plugin();
         const error = await tool('readRecord').execute('call-2', {}).catch((e: Error) => e);
-        const answer = JSON.parse(error.message);
-        expect(answer).toEqual({ error: expect.stringMatching(/^'record' is required/), code: -32602 });
-        expect(error.message).not.toContain('MCP error');
+        expect(error.message).toMatch(/^'record' is required/);
+        expect(error.message).not.toMatch(/MCP error|"code"|-32602/);
+        expect(Object.getOwnPropertyDescriptor(error, Symbol.for('openclaw.toolOperatorHint'))?.value).toBe('[code -32602]');
+    });
+
+    it('fails with a path\'s backslashes as the core wrote them, for OpenClaw\'s JSON to escape once', async () => {
+        const { tool } = plugin({}, { failWith: { error: new ToolError(ToolErrorCode.InvalidParams, 'Not built: C:\\Projects\\plugin\\Spells\\StormBolt.yaml'), times: 1 } });
+        const error = await tool('findRecords').execute('call-4', { query: 'Iron' }).catch((e: Error) => e);
+        expect(error.message).toBe('Not built: C:\\Projects\\plugin\\Spells\\StormBolt.yaml');
     });
 
     it('retries a call the backend refused for an expired session, once', async () => {
@@ -123,8 +129,11 @@ describe('a call', () => {
     });
 });
 
-describe('failureText', () => {
+describe('failure', () => {
     it('is internal for anything that is not a ToolError, keeping the message', () => {
-        expect(JSON.parse(failureText(new Error('disk full')))).toEqual({ error: 'disk full', code: -32603 });
+        const failed = failure(new Error('disk full'));
+        expect(failed.message).toBe('disk full');
+        expect(failureText(new Error('disk full'))).toBe('disk full');
+        expect(Object.getOwnPropertyDescriptor(failed, Symbol.for('openclaw.toolOperatorHint'))?.value).toBe('[code -32603]');
     });
 });

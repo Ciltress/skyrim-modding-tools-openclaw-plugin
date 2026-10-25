@@ -337,6 +337,22 @@ function toolResults(body) {
 
 const ANSI = /\x1b\[[0-9;]*m/g;
 
+/** OpenClaw's log line for a failed call, with the plugin's operator hint after the message: `[code -32602]`. */
+const FAILURE_CODE = /\[tools\] (\w+) failed: (?:(?!\[tools\] )[^])*?\[code (-32\d{3})\]/g;
+
+/**
+ * The JSON-RPC code of each failed call of the plugin's, by tool name in lower case, in the order they failed: the
+ * plugin gives it to OpenClaw's log alone (its tools.ts), what the model reads being the message.
+ */
+export function failureCodes(log) {
+    const codes = new Map();
+    for (const [, tool, code] of log.matchAll(FAILURE_CODE)) {
+        const name = tool.toLowerCase();
+        codes.set(name, [...(codes.get(name) ?? []), Number(code)]);
+    }
+    return codes;
+}
+
 /**
  * One task through OpenClaw. Returns the calls in the record's shape, the final answer and how the session ended,
  * plus the proxy's per-request figures and what the plugin's hooks logged.
@@ -379,6 +395,8 @@ export async function runOpenClaw({ entry, prompt, model, cwd, configFile, works
     let envelope = null;
     try { envelope = JSON.parse(stdout.slice(stdout.indexOf('{'))); } catch { /* no envelope */ }
 
+    const log = stderr.replace(ANSI, '');
+    const codes = failureCodes(log);
     // The conversation's own requests carry the tool list; anything else is a side request.
     const main = proxy.log.filter(e => e.tools > 0 && !e.refused);
     const calls = [];
@@ -388,11 +406,10 @@ export async function runOpenClaw({ entry, prompt, model, cwd, configFile, works
             const record = callRecord(toolCall, turn, toolNames);
             const text = results[i];
             if (text !== undefined) {
-                const plugin = toolNames.has(record.name);
-                // A failed call of the plugin's reads `[tool error] {"status":"error","tool":"readrecord","error":"{\"error\":…,\"code\":-32602}"}`.
-                const code = /\\*"code\\*"\s*:\s*(-32\d{3})/.exec(text)?.[1];
-                record.isError = /^\s*\[tool error\]/.test(text) || (plugin && code !== undefined && /\\*"error\\*"\s*:/.test(text));
-                if (record.isError && plugin && code !== undefined) record.code = Number(code);
+                // A failed call reads `[tool error] {"status": "error", "tool": "readrecord", "error": "'record' is required …"}`.
+                record.isError = /^\s*\[tool error\]/.test(text);
+                const code = record.isError && toolNames.has(record.name) ? codes.get(record.name.toLowerCase())?.shift() : undefined;
+                if (code !== undefined) record.code = code;
                 if (record.isError && /Tool \S+ not found|Unknown tool id/i.test(text)) record.unknownTool = true;
                 if (NOT_ALLOWED.includes(record.name)) record.deployRefused = true;
                 record.truncated = /\\*"status\\*"\s*:\s*\\*"truncated/.test(text);
@@ -431,7 +448,6 @@ export async function runOpenClaw({ entry, prompt, model, cwd, configFile, works
         const heading = file.text.split('\n').find(line => line.trim());
         return heading && system.includes(heading.trim());
     }).map(file => file.name);
-    const log = stderr.replace(ANSI, '');
     return {
         calls,
         answer: envelope?.final || last?.content || '',

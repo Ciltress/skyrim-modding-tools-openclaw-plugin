@@ -19,7 +19,7 @@ src/
                   Nexus key; the agents that mod; its Product for the core
   tools.ts        the core's tools as OpenClaw tools: names, direct-only, sequential, prepareArguments =
                   the core's coerceArgs, the MCP server's rules (profile, budget, gate, one retry, latch),
-                  failures thrown as the MCP server's error JSON; healthcheck
+                  failures thrown as the core's message, the code for OpenClaw's log; healthcheck
   buildCheck.ts   after_tool_call / before_agent_finalize: a project changed and not built asks for a build
   manifest.ts     renders openclaw.plugin.json from the tools
   __tests__/      vitest, offline; the doubles are the core's (skyrim-modding-tools-core/testing)
@@ -42,7 +42,9 @@ openclaw.plugin.json  committed, generated: OpenClaw reads it before loading any
   `manifest.test.ts` fails on a stale one. A changed manifest needs `--accept-capabilities` on the next reload.
 - **Nothing starts outside the gateway.** The CLI loads plugins too (`plugins inspect`, `skills list`); work that
   starts the helper runs only from a service, in `registrationMode: "full"`.
-- **A tool fails by throwing** (OpenClaw's contract); the message is the MCP server's `{"error", "code"}` JSON.
+- **A tool fails by throwing** (OpenClaw's contract); the message is the core's, as plain text: OpenClaw writes it into
+  its own JSON, so JSON in the message would be escaped twice — every backslash of a path four. The JSON-RPC code is
+  OpenClaw's operator hint (`[code -32602]` in its `[tools] … failed:` log line, never the model's), which the eval reads.
   Nothing goes into `details` that OpenClaw would grade: a `status` there that is not a success fails the call.
 - **Skills come from the core.** Never edit `skills/`; it is rebuilt from `node_modules/skyrim-modding-tools-core`.
   The manifest names `skills/Domain/skills`, the folder whose children are the skills; OpenClaw links them into

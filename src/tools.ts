@@ -35,14 +35,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
     ]);
 }
 
+/** OpenClaw's mark for a failure's words to the operator, which its log shows and the model never reads (tool-operator-hint.ts). */
+const OPERATOR_HINT = Symbol.for('openclaw.toolOperatorHint');
+
 /**
- * What a failed call answers the model: what the MCP server answers — `{"error": …, "code": …}`, the codes
- * JSON-RPC's — without the "MCP error <code>: " the MCP SDK puts before every message, which says nothing here.
+ * What a failed call answers the model: the core's message as plain text, which OpenClaw writes into its own JSON —
+ * `[tool error] {"status": "error", "tool": "buildproject", "error": "Not built: …"}`. Sent as the MCP server's
+ * `{"error", "code"}` JSON, it was a text inside that JSON, each backslash of a path written four times, and e4b left two
+ * records outside their project though the refusal named each one's place (eval round 65's spell #5 and npc #4).
  */
 export function failureText(error: unknown): string {
+    return (error instanceof Error ? error.message : String(error)) || 'Internal error';
+}
+
+/** A failed call as OpenClaw is to throw it: its text for the model, its JSON-RPC code for OpenClaw's log alone. */
+export function failure(error: unknown): Error {
     const code = error instanceof ToolError ? error.code : ToolErrorCode.InternalError;
-    const message = error instanceof Error ? error.message : String(error);
-    return JSON.stringify({ error: message || 'Internal error', code });
+    const failed = new Error(failureText(error));
+    Object.defineProperty(failed, OPERATOR_HINT, { value: `[code ${code}]`, configurable: true, enumerable: false, writable: true });
+    return failed;
 }
 
 /** healthcheck is the plugin's own, as it is the MCP server's: it must answer when nothing else does. */
@@ -133,7 +144,7 @@ export class SkyrimTools {
                     return { content: result.content, details: {} };
                 } catch (error) {
                     // Thrown, as OpenClaw asks of a failed tool: the model reads the message as the call's result.
-                    throw new Error(failureText(error));
+                    throw failure(error);
                 }
             }
         };

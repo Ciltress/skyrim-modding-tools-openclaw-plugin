@@ -58,8 +58,10 @@ The gateway logs `skyrim-modding-tools: instructions added to <agent>'s system p
 build-check request, in `%TEMP%\openclaw\openclaw-<date>.log`.
 
 A reload stops the service, and with it the old generation's helper; count `SkyrimHelper.exe` processes to check.
-On OpenClaw 2026.10.4 every other reload fails with "forced retirement after 5000ms: 1 still-running call(s)"
-(with or without the service's stop, no tool call running); the next reload succeeds.
+On OpenClaw 2026.10.4 every other reload fails with "forced retirement after 5000ms: 1 still-running call(s)";
+the next reload succeeds. It is OpenClaw's: an entry that registers nothing fails the same way, and reloads put
+the same phantom call on the bundled duckduckgo plugin (tested 2026-10-25; upstream's nearest is
+openclaw/openclaw#164425).
 
 ## Care with a real backend
 

@@ -31,12 +31,12 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
           cache: "npm"
 
       # The host: npm install links it for the SDK's types (scripts/link-openclaw.mjs).
       - name: Install OpenClaw
-        run: npm install -g openclaw@2026.10.4
+        run: npm install -g openclaw@2026.10.7
 
       - name: Install dependencies
         run: npm ci

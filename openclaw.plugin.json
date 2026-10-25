@@ -12,16 +12,63 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "envFile": {
+      "modManager": {
         "type": "string",
-        "description": "A .env file with the settings the MCP server reads (SKYRIM_MO2_INSTANCE, NEXUS_API_KEY, SKYRIM_PROJECTS_DIR, MCP_PROFILE, …) — the MCP server's own, to share them. Its folder is where a relative path starts, and where projects/ is unless SKYRIM_PROJECTS_DIR says otherwise."
+        "enum": [
+          "mo2",
+          "amethyst"
+        ],
+        "description": "mo2 (Mod Organizer 2) or amethyst (Amethyst, Linux). Unset: Mod Organizer when an instance is set, else Amethyst when it has Skyrim Special Edition set up."
       },
-      "env": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        },
-        "description": "Settings by the same names, over the envFile's."
+      "mo2Instance": {
+        "type": "string",
+        "description": "The instance folder, the one with ModOrganizer.ini in it; the tools follow its selected profile. Use a test instance: deploys write into its mods and profile."
+      },
+      "amethystDir": {
+        "type": "string",
+        "description": "Only if it is neither the Flatpak's nor ~/.config's: the tools find those."
+      },
+      "winePrefix": {
+        "type": "string",
+        "description": "Mod Organizer under Proton: the prefix it runs in, the folder with dosdevices in it. Found by itself for MO2-LINT."
+      },
+      "projectsDir": {
+        "type": "string",
+        "description": "Where the mod projects live. Unset: projects in the plugin's folder. Make it the modding agents' working folder too."
+      },
+      "creationKitDir": {
+        "type": "string",
+        "description": "For its Papyrus compiler and the vanilla script sources. Unset: the instance's game folder."
+      },
+      "papyrusCompiler": {
+        "type": "string",
+        "description": "PapyrusCompiler.exe, or russo-2025's papyrus-compiler on Linux. Unset: the Creation Kit's on Windows; on Linux papyrus-compiler on PATH."
+      },
+      "nexusApiKey": {
+        "type": "string",
+        "description": "Your personal key, from your Nexus Mods account settings. Without it the Nexus tools are not offered; downloadNexusFile only for a premium account."
+      },
+      "profile": {
+        "type": "string",
+        "enum": [
+          "core",
+          "readonly",
+          "all"
+        ],
+        "description": "Which tools are offered: all (the default), core, or readonly."
+      },
+      "maxResponseBytes": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "The ceiling on one answer; 0 removes it. Unset: the profile's."
+      },
+      "capabilityGate": {
+        "type": "boolean",
+        "description": "On (the default): a tool the backend cannot serve — the Nexus tools without a key — is not offered."
+      },
+      "helperPath": {
+        "type": "string",
+        "description": "A built SkyrimHelper. Unset: the one npm run build:helper builds."
       },
       "agents": {
         "type": "array",
@@ -30,6 +77,131 @@
         },
         "description": "The agents that mod: they get the tools' instructions in their system prompt, and are asked to build a project they changed and did not build before they answer."
       }
+    }
+  },
+  "uiHints": {
+    "modManager": {
+      "label": "Mod manager",
+      "help": "mo2 (Mod Organizer 2) or amethyst (Amethyst, Linux). Unset: Mod Organizer when an instance is set, else Amethyst when it has Skyrim Special Edition set up."
+    },
+    "mo2Instance": {
+      "label": "Mod Organizer instance",
+      "help": "The instance folder, the one with ModOrganizer.ini in it; the tools follow its selected profile. Use a test instance: deploys write into its mods and profile.",
+      "placeholder": "G:\\Modding\\SkyrimSE-Test"
+    },
+    "amethystDir": {
+      "label": "Amethyst config folder",
+      "help": "Only if it is neither the Flatpak's nor ~/.config's: the tools find those.",
+      "advanced": true
+    },
+    "winePrefix": {
+      "label": "Wine prefix",
+      "help": "Mod Organizer under Proton: the prefix it runs in, the folder with dosdevices in it. Found by itself for MO2-LINT.",
+      "advanced": true
+    },
+    "projectsDir": {
+      "label": "Projects folder",
+      "help": "Where the mod projects live. Unset: projects in the plugin's folder. Make it the modding agents' working folder too."
+    },
+    "creationKitDir": {
+      "label": "Creation Kit folder",
+      "help": "For its Papyrus compiler and the vanilla script sources. Unset: the instance's game folder.",
+      "advanced": true
+    },
+    "papyrusCompiler": {
+      "label": "Papyrus compiler",
+      "help": "PapyrusCompiler.exe, or russo-2025's papyrus-compiler on Linux. Unset: the Creation Kit's on Windows; on Linux papyrus-compiler on PATH.",
+      "advanced": true
+    },
+    "nexusApiKey": {
+      "label": "Nexus Mods API key",
+      "help": "Your personal key, from your Nexus Mods account settings. Without it the Nexus tools are not offered; downloadNexusFile only for a premium account.",
+      "sensitive": true
+    },
+    "profile": {
+      "label": "Tool profile",
+      "help": "Which tools are offered: all (the default), core, or readonly.",
+      "advanced": true
+    },
+    "maxResponseBytes": {
+      "label": "Answer size limit (bytes)",
+      "help": "The ceiling on one answer; 0 removes it. Unset: the profile's.",
+      "advanced": true
+    },
+    "capabilityGate": {
+      "label": "Withhold what the backend cannot serve",
+      "help": "On (the default): a tool the backend cannot serve — the Nexus tools without a key — is not offered.",
+      "advanced": true
+    },
+    "helperPath": {
+      "label": "Plugin helper",
+      "help": "A built SkyrimHelper. Unset: the one npm run build:helper builds.",
+      "advanced": true
+    },
+    "agents": {
+      "label": "Modding agents",
+      "help": "The agents that mod: they get the tools' instructions in their system prompt, and are asked to build a project they changed and did not build before they answer.",
+      "placeholder": "skyrim-e4b"
+    }
+  },
+  "configGroups": [
+    {
+      "id": "game",
+      "title": "Mod manager",
+      "order": 10,
+      "properties": [
+        "modManager",
+        "mo2Instance",
+        "amethystDir",
+        "winePrefix"
+      ]
+    },
+    {
+      "id": "projects",
+      "title": "Projects and scripts",
+      "order": 20,
+      "properties": [
+        "projectsDir",
+        "creationKitDir",
+        "papyrusCompiler"
+      ]
+    },
+    {
+      "id": "agents",
+      "title": "Agents",
+      "order": 30,
+      "properties": [
+        "agents"
+      ]
+    },
+    {
+      "id": "nexus",
+      "title": "Nexus Mods",
+      "order": 40,
+      "properties": [
+        "nexusApiKey"
+      ]
+    },
+    {
+      "id": "tools",
+      "title": "Tools",
+      "order": 50,
+      "properties": [
+        "profile",
+        "maxResponseBytes",
+        "capabilityGate",
+        "helperPath"
+      ]
+    }
+  ],
+  "configContracts": {
+    "secretInputs": {
+      "paths": [
+        {
+          "path": "nexusApiKey",
+          "expected": "string"
+        }
+      ]
     }
   },
   "skills": [

@@ -7,6 +7,9 @@ node_modules
 # The core's skills, copied from node_modules/skyrim-modding-tools-core by npm run build: the core owns them.
 skills/
 
+# The mod projects, where projectsDir puts them unless it says otherwise: the user's own work.
+projects/
+
 # Credentials and key material — never commit them.
 *.p12
 *.pfx

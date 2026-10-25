@@ -2,7 +2,7 @@ import { buildJsonPluginConfigSchema, definePluginEntry, type OpenClawPluginApi 
 import { createBackend, defaultProjectsDir, readConfiguration, stopBackends } from 'skyrim-modding-tools-core';
 import { BuildCheck } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
-import { CONFIG_SCHEMA, PLUGIN_ID, pluginProduct, readSettings } from './settings.js';
+import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
 import { SkyrimTools } from './tools.js';
 
 /**
@@ -10,7 +10,8 @@ import { SkyrimTools } from './tools.js';
  * serve, the instructions for the modding agents, and the check that they build what they changed.
  */
 export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools {
-    const settings = readSettings(api.pluginConfig);
+    // Where the plugin is installed, not the copy of it the gateway runs: projects/ and relative paths stay put.
+    const settings = readSettings(api.pluginConfig, api.rootDir ?? PLUGIN_ROOT);
     const product = pluginProduct(settings.root);
     const backend = createBackend(settings.env, { product });
     const tools = new SkyrimTools(backend, product, settings.env);

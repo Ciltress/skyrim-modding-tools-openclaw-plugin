@@ -29,7 +29,6 @@
     "openclaw": ">=2026.10.4"
   },
   "dependencies": {
-    "dotenv": "^18.0.7",
     "skyrim-modding-tools-core": "github:Ciltress/skyrim-modding-tools-core#v0.1.6"
   },
   "devDependencies": {
@@ -46,7 +45,7 @@
       "pluginApi": ">=2026.10.4"
     },
     "build": {
-      "openclawVersion": "2026.10.4"
+      "openclawVersion": "2026.10.7"
     }
   },
   "allowScripts": {

@@ -16,7 +16,8 @@ What the plugin does that an MCP server cannot in OpenClaw:
 
 ## Install
 
-Needs OpenClaw 2026.10.4 or later, Node.js 24.18, and the .NET 10 SDK for the plugin helper.
+Needs OpenClaw 2026.10.4 or later (2026.10.7 recommended; it needs Node.js 24.22.1) and the .NET 10 SDK for the
+plugin helper.
 
 ```bash
 git clone https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin
@@ -27,7 +28,9 @@ npm run build:helper
 openclaw plugins install -l .
 ```
 
-Then, in `~/.openclaw/openclaw.json`:
+Then set it up in OpenClaw's Settings page — *Plugins → Skyrim Modding Tools*: the Mod Organizer instance (or
+Amethyst), the projects folder, the agents that mod, a Nexus Mods API key if you want the Nexus tools — or in
+`~/.openclaw/openclaw.json`:
 
 ```json5
 {
@@ -38,21 +41,31 @@ Then, in `~/.openclaw/openclaw.json`:
         // The instructions and the build check are conversation hooks.
         hooks: { allowConversationAccess: true },
         config: {
-          // The settings the MCP server reads — SKYRIM_MO2_INSTANCE, NEXUS_API_KEY, … — from its .env, or any .env.
-          envFile: "C:/Users/you/skyrim-modding-tools/skyrim-modding-tools-mcp/.env",
+          mo2Instance: "G:/Modding/SkyrimSE-Test",
+          projectsDir: "C:/Users/you/skyrim-projects",
+          nexusApiKey: "<your key>",
           // The agents that mod.
           agents: ["skyrim"]
         }
       }
     }
   },
-  agents: { entries: { skyrim: { tools: { allow: ["read", "write", "edit", "skills_read", "skyrim-modding-tools"] } } } }
+  agents: {
+    entries: {
+      skyrim: {
+        cwd: "C:/Users/you/skyrim-projects",
+        tools: { allow: ["read", "write", "edit", "skills_read", "skyrim-modding-tools"] }
+      }
+    }
+  }
 }
 ```
 
-The tools are optional: an agent gets them only when its `tools.allow` names the plugin (or a tool). The envFile's
-folder is where a relative path starts and where `projects/` is, unless `SKYRIM_PROJECTS_DIR` says otherwise;
-`env` in the config sets single settings over it.
+The tools are optional: an agent gets them only when its `tools.allow` names the plugin (or a tool). Every field
+is listed in Settings with what it does; the rarer ones — the Creation Kit and Papyrus compiler, Amethyst's folder,
+a Wine prefix, the tool profile — are under *advanced*. Settings shows the Nexus key hidden, and it may be a
+SecretRef. A path may start with `~`; a relative one is the plugin's folder's, and without `projectsDir` the
+projects are in `projects/` there.
 
 ## Development
 

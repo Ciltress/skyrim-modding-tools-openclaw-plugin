@@ -15,7 +15,8 @@ server gets the nearest equivalent where one exists (the core's ADR-0009).
 ```
 src/
   index.ts        the entry: definePluginEntry, the gate service, the hooks
-  settings.ts     the plugin's config (envFile, env, agents) and its Product for the core
+  settings.ts     the plugin's config: a field per core setting, with Settings' labels, sections and the secret
+                  Nexus key; the agents that mod; its Product for the core
   tools.ts        the core's tools as OpenClaw tools: names, direct-only, sequential, prepareArguments =
                   the core's coerceArgs, the MCP server's rules (profile, budget, gate, one retry, latch),
                   failures thrown as the MCP server's error JSON; healthcheck
@@ -58,10 +59,11 @@ The gateway logs `skyrim-modding-tools: instructions added to <agent>'s system p
 build-check request, in `%TEMP%\openclaw\openclaw-<date>.log`.
 
 A reload stops the service, and with it the old generation's helper; count `SkyrimHelper.exe` processes to check.
-On OpenClaw 2026.10.4 every other reload fails with "forced retirement after 5000ms: 1 still-running call(s)";
-the next reload succeeds. It is OpenClaw's: an entry that registers nothing fails the same way, and reloads put
-the same phantom call on the bundled duckduckgo plugin (tested 2026-10-25; upstream's nearest is
-openclaw/openclaw#164425).
+OpenClaw 2026.10.4 failed every other reload ("forced retirement after 5000ms: 1 still-running call(s)", its own
+bug: an entry registering nothing did the same); 2026.10.7 reloads cleanly.
+
+A changed config schema needs a gateway restart, not a reload: the running gateway checks the config against the
+schema it loaded, refuses the new fields as invalid, and so refuses the reload that would bring the new schema.
 
 ## Care with a real backend
 

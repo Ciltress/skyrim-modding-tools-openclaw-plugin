@@ -57,6 +57,10 @@ A new core release: `npm install "skyrim-modding-tools-core@git+https://github.c
 The gateway logs `skyrim-modding-tools: instructions added to <agent>'s system prompt` once per agent and every
 build-check request, in `%TEMP%\openclaw\openclaw-<date>.log`.
 
+A reload stops the service, and with it the old generation's helper; count `SkyrimHelper.exe` processes to check.
+On OpenClaw 2026.10.4 every other reload fails with "forced retirement after 5000ms: 1 still-running call(s)"
+(with or without the service's stop, no tool call running); the next reload succeeds.
+
 ## Care with a real backend
 
 The tools write into a mod manager's instance. Work on a test instance; change other people's mods only through

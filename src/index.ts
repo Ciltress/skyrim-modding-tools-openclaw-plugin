@@ -1,5 +1,5 @@
 import { buildJsonPluginConfigSchema, definePluginEntry, type OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry';
-import { createBackend, defaultProjectsDir, readConfiguration, serverInstructions } from 'skyrim-modding-tools-core';
+import { createBackend, defaultProjectsDir, readConfiguration, serverInstructions, stopBackends } from 'skyrim-modding-tools-core';
 import { BuildCheck } from './buildCheck.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, pluginProduct, readSettings } from './settings.js';
 import { SkyrimTools } from './tools.js';
@@ -16,8 +16,9 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
     tools.register(api);
 
     // Only in the gateway: the CLI loads plugins too, to list or inspect them, and must not start a helper.
+    // OpenClaw stops the service before a reload loads the next generation, which brings a helper of its own.
     if (api.registrationMode === 'full') {
-        api.registerService({ id: PLUGIN_ID, start: () => { void tools.ensureGate(); } });
+        api.registerService({ id: PLUGIN_ID, start: () => { void tools.ensureGate(); }, stop: () => { stopBackends(); } });
     }
 
     const { paths } = readConfiguration(settings.env, { root: settings.root });

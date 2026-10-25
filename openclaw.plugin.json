@@ -1,0 +1,116 @@
+{
+  "id": "skyrim-modding-tools",
+  "name": "Skyrim Modding Tools",
+  "description": "Skyrim SE modding: records across a mod manager's load order, mods and patches authored as text and built into plugins, mods installed — the tools of skyrim-modding-tools-core under their own names.",
+  "categories": [
+    "developer-tools"
+  ],
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "envFile": {
+        "type": "string",
+        "description": "A .env file with the settings the MCP server reads (SKYRIM_MO2_INSTANCE, NEXUS_API_KEY, SKYRIM_PROJECTS_DIR, MCP_PROFILE, …) — the MCP server's own, to share them. Its folder is where a relative path starts, and where projects/ is unless SKYRIM_PROJECTS_DIR says otherwise."
+      },
+      "env": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Settings by the same names, over the envFile's."
+      },
+      "agents": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The agents that mod: they get the tools' instructions in their system prompt, and are asked to build a project they changed and did not build before they answer."
+      }
+    }
+  },
+  "skills": [
+    "skills/Domain/skills"
+  ],
+  "contracts": {
+    "tools": [
+      "readServerGuide",
+      "readSkill",
+      "findRecords",
+      "readRecord",
+      "newProject",
+      "addPatch",
+      "editRecord",
+      "buildProject",
+      "deployProject",
+      "pullProject",
+      "searchNexus",
+      "readNexusMod",
+      "downloadNexusFile",
+      "listMods",
+      "checkGameVersion",
+      "installMod",
+      "disableMod",
+      "healthcheck"
+    ]
+  },
+  "toolMetadata": {
+    "readServerGuide": {
+      "optional": true
+    },
+    "readSkill": {
+      "optional": true
+    },
+    "findRecords": {
+      "optional": true
+    },
+    "readRecord": {
+      "optional": true
+    },
+    "newProject": {
+      "optional": true
+    },
+    "addPatch": {
+      "optional": true
+    },
+    "editRecord": {
+      "optional": true
+    },
+    "buildProject": {
+      "optional": true
+    },
+    "deployProject": {
+      "optional": true
+    },
+    "pullProject": {
+      "optional": true
+    },
+    "searchNexus": {
+      "optional": true
+    },
+    "readNexusMod": {
+      "optional": true
+    },
+    "downloadNexusFile": {
+      "optional": true
+    },
+    "listMods": {
+      "optional": true
+    },
+    "checkGameVersion": {
+      "optional": true
+    },
+    "installMod": {
+      "optional": true
+    },
+    "disableMod": {
+      "optional": true
+    },
+    "healthcheck": {
+      "optional": true
+    }
+  }
+}

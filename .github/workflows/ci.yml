@@ -1,0 +1,51 @@
+name: CI
+
+# Every push and pull request, on Windows and Linux, as the core's and the MCP server's.
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: "npm"
+
+      # The host: npm install links it for the SDK's types (scripts/link-openclaw.mjs).
+      - name: Install OpenClaw
+        run: npm install -g openclaw@2026.10.4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test Types
+        run: npm run test:types
+
+      - name: Test Unit
+        run: npm test
+
+      - name: Build
+        run: npm run build

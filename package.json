@@ -1,0 +1,55 @@
+{
+  "name": "skyrim-modding-tools-openclaw-plugin",
+  "version": "0.1.0",
+  "description": "The Skyrim SE modding tools as a native OpenClaw plugin: the tools of skyrim-modding-tools-core under their own names, its skills, and the instructions for the Skyrim agents",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "skills",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/link-openclaw.mjs",
+    "build": "node scripts/link-openclaw.mjs && tsc -p tsconfig.json && node scripts/copy-skills.mjs",
+    "manifest": "node scripts/write-manifest.mjs",
+    "test": "vitest run",
+    "test:types": "node scripts/link-openclaw.mjs && tsc -p tsconfig.json --noEmit",
+    "build:helper": "npm --prefix node_modules/skyrim-modding-tools-core run build:helper",
+    "check:helper": "npm --prefix node_modules/skyrim-modding-tools-core run check:helper"
+  },
+  "author": "Andreas Breit",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.10.4"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.7",
+    "skyrim-modding-tools-core": "git+https://github.com/Ciltress/skyrim-modding-tools-core.git#v0.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.4"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.10.4"
+    },
+    "build": {
+      "openclawVersion": "2026.10.4"
+    }
+  },
+  "allowScripts": {
+    "github:Ciltress/skyrim-modding-tools-core#f9f2cd905311e51b8c1051f41df0978067c2619d": true
+  }
+}

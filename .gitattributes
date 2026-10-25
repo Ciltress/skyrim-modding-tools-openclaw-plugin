@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Markdown with LF everywhere, as the core's: what is read does not depend on the system.
+*.md text eol=lf

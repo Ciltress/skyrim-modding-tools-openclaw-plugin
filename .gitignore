@@ -1,0 +1,14 @@
+coverage
+dist
+node_modules
+*.code-workspace
+.env
+
+# The core's skills, copied from node_modules/skyrim-modding-tools-core by npm run build: the core owns them.
+skills/
+
+# Credentials and key material — never commit them.
+*.p12
+*.pfx
+*.pem
+*.key

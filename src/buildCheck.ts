@@ -30,6 +30,8 @@ const PROJECT_CHANGES = new Set(['addpatch', 'editrecord']);
 const PROJECT_BUILDS = new Set(['buildproject', 'deployproject']);
 /** OpenClaw's file tools, and where a call names its file. */
 const FILE_TOOLS = new Set(['write', 'edit', 'apply_patch']);
+/** A project's folders the build reads: the plugin as text, and the Papyrus sources. */
+const PROJECT_TEXT = new Set(['plugin', 'scripts']);
 
 /** At most this many runs are followed at once; the oldest is dropped first. A run normally ends long before. */
 const MAX_RUNS = 200;
@@ -40,7 +42,7 @@ const MAX_RUNS = 200;
  * user the mod was built, and round 63's npc #5 answered "built" after an editRecord it never built.
  *
  * Only the agents that mod are followed. A project counts as changed after a call that succeeded: addPatch or
- * editRecord with its name, or a file tool writing under its folder; it counts as built again after a
+ * editRecord with its name, or a file tool writing into its plugin or scripts folder; it counts as built again after a
  * buildProject or deployProject of it that succeeded. Before the run's answer, a project still changed asks the
  * model, once, to build it. The MCP server's nearest equivalent is its answers' nextStep lines, which say to
  * build next.
@@ -120,15 +122,19 @@ export class BuildCheck {
         return run;
     }
 
-    /** The projects a file tool's call wrote into: the first folder of each path under the projects folder. */
+    /**
+     * The projects a file tool's call changed the text of: the first folder of each path under the projects folder
+     * whose next is `plugin` or `scripts`, what the build reads. Its build output is no text of it, and its assets
+     * are copied at deploy as they are; a record file in no project — eval round 64 wrote `Books/MavenWarning.yaml`
+     * from the projects folder four times — names none.
+     */
     private projectsWritten(toolName: string, params: Record<string, unknown>): string[] {
         const projects = new Set<string>();
         for (const file of filePaths(toolName, params)) {
             const relative = path.relative(this.projectsDir, path.resolve(this.projectsDir, file));
             if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
-            const [project, ...rest] = relative.split(/[\\/]/);
-            // A project's build output is not its text.
-            if (project && rest.length && rest[0].toLowerCase() !== 'build') projects.add(project);
+            const [project, folder, ...rest] = relative.split(/[\\/]/);
+            if (project && rest.length && PROJECT_TEXT.has(folder.toLowerCase())) projects.add(project);
         }
         return [...projects];
     }

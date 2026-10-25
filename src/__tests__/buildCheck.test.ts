@@ -54,13 +54,19 @@ describe('BuildCheck', () => {
         expect(c.beforeFinalize(agent)).toBeDefined();
     });
 
-    it('counts a file written under a project, relative or absolute, but not into its build folder', () => {
+    it('counts a file written into a project\'s plugin or scripts, relative or absolute, and nothing else', () => {
         const c = check();
         c.afterToolCall(call('write', { path: 'FlameBlade/plugin/Weapons/FlameBlade.yaml', content: '' }), agent);
         c.afterToolCall(call('edit', { path: path.join(projects, 'StormBolt', 'plugin', 'Spells', 'StormBolt.yaml') }), agent);
+        c.afterToolCall(call('write', { path: 'Hilda/scripts/HildaGreeting.psc' }), agent);
         c.afterToolCall(call('write', { path: 'Other/build/Other.esp' }), agent);
+        // Copied at deploy as they are: no build needed.
+        c.afterToolCall(call('write', { path: 'Other/assets/meshes/shield.nif' }), agent);
+        // A record file written beside the projects, in no project: eval round 64's note #4 wrote `Books/MavenWarning.yaml`
+        // from the projects folder, and the check asked for a build of a project "Books".
+        c.afterToolCall(call('write', { path: 'Books/MavenWarning.yaml' }), agent);
         c.afterToolCall(call('write', { path: path.resolve('/elsewhere/notes.md') }), agent);
-        expect(c.beforeFinalize(agent)!.reason).toBe('Changed and not built since: FlameBlade, StormBolt.');
+        expect(c.beforeFinalize(agent)!.reason).toBe('Changed and not built since: FlameBlade, StormBolt, Hilda.');
     });
 
     it('follows only the agents that mod, and forgets a run that ended', () => {

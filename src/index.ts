@@ -4,10 +4,12 @@ import { BuildCheck } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
 import { SkyrimTools } from './tools.js';
+import { WriteGuard } from './writeGuard.js';
 
 /**
  * The plugin, registered into the gateway: the core's tools, a service that asks the backend once what it can
- * serve, the instructions for the modding agents, and the check that they build what they changed.
+ * serve, the instructions for the modding agents, the check that they build what they changed, and the guard that
+ * keeps their record files where a build reads them.
  */
 export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools {
     // Where the plugin is installed, not the copy of it the gateway runs: projects/ and relative paths stay put.
@@ -24,7 +26,9 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
     }
 
     const { paths } = readConfiguration(settings.env, { root: settings.root });
-    const check = new BuildCheck(paths.SKYRIM_PROJECTS_DIR ?? defaultProjectsDir(settings.root), settings.agents);
+    const projectsDir = paths.SKYRIM_PROJECTS_DIR ?? defaultProjectsDir(settings.root);
+    const check = new BuildCheck(projectsDir, settings.agents);
+    const guard = new WriteGuard(projectsDir, agentId => check.applies(agentId));
 
     // The MCP server announces the core's instructions, which OpenClaw drops: here they reach the system prompt of
     // the agents that mod, at its cacheable end, with the plugin's own lines. Logged once per agent, so the gateway
@@ -38,13 +42,26 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         }
         return { appendSystemContext: agentInstructions(backend.describe()) };
     });
-    api.on('after_tool_call', (event, context) => { check.afterToolCall(event, context); });
+    // A record file written where no build reads it is stopped before it lands, with the path in the project. Logged,
+    // so the gateway log shows each.
+    api.on('before_tool_call', (event, context) => {
+        const block = guard.beforeToolCall(event, context);
+        if (block) api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} stopped — ${block.blockReason}`);
+        return block;
+    });
+    api.on('after_tool_call', (event, context) => {
+        check.afterToolCall(event, context);
+        guard.afterToolCall(event, context);
+    });
     api.on('before_agent_finalize', (event, context) => {
         const revision = check.beforeFinalize(context, event.runId ?? context.runId);
         if (revision) api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to build before answering — ${revision.reason}`);
         return revision;
     });
-    api.on('agent_end', (event, context) => { check.end(event.runId ?? context.runId); });
+    api.on('agent_end', (event, context) => {
+        check.end(event.runId ?? context.runId);
+        guard.end(event.runId ?? context.runId);
+    });
     return tools;
 }
 

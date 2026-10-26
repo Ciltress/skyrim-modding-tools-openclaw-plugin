@@ -30,7 +30,7 @@
     "openclaw": ">=2026.10.4"
   },
   "dependencies": {
-    "skyrim-modding-tools-core": "github:Ciltress/skyrim-modding-tools-core#v0.1.12"
+    "skyrim-modding-tools-core": "github:Ciltress/skyrim-modding-tools-core#v0.1.13"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -50,6 +50,6 @@
     }
   },
   "allowScripts": {
-    "github:Ciltress/skyrim-modding-tools-core#8a95fd65df0cd1af10ace6ddf7cb0fbe36bff078": true
+    "github:Ciltress/skyrim-modding-tools-core#0fb86499186a6c193369e2e14baa55b0bfc2bd5d": true
   }
 }

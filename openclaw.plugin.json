@@ -216,6 +216,8 @@
       "newProject",
       "addPatch",
       "editRecord",
+      "moveRecord",
+      "deleteRecord",
       "buildProject",
       "deployProject",
       "pullProject",
@@ -249,6 +251,12 @@
       "optional": true
     },
     "editRecord": {
+      "optional": true
+    },
+    "moveRecord": {
+      "optional": true
+    },
+    "deleteRecord": {
       "optional": true
     },
     "buildProject": {

@@ -3,6 +3,7 @@ import { createBackend, defaultProjectsDir, readConfiguration, stopBackends } fr
 import { BuildCheck } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
+import { textCallRevision } from './textCalls.js';
 import { SkyrimTools } from './tools.js';
 import { WriteGuard } from './writeGuard.js';
 
@@ -54,6 +55,12 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         guard.afterToolCall(event, context);
     });
     api.on('before_agent_finalize', (event, context) => {
+        // A call written as text first: it is why nothing was done.
+        const unmade = check.applies(context.agentId) ? textCallRevision(event.lastAssistantMessage, event.runId ?? context.runId) : undefined;
+        if (unmade) {
+            api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to make the call it wrote as text — ${unmade.reason}`);
+            return unmade;
+        }
         const revision = check.beforeFinalize(context, event.runId ?? context.runId);
         if (revision) api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to build before answering — ${revision.reason}`);
         return revision;

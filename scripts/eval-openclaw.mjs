@@ -470,6 +470,8 @@ export async function runOpenClaw({ entry, prompt, model, cwd, configFile, works
             // the pass it asked for — it never revises a run after a call it cannot replay, as any plugin tool's.
             buildCheckAsked: (log.match(/asked to build before answering/g) ?? []).length,
             buildCheckDropped: (log.match(/before_agent_finalize requested revision after potential side effects/g) ?? []).length,
+            // Its text-call check: an answer that wrote a tool call as text, asked to make it (a dropped pass counts above).
+            textCallAsked: (log.match(/asked to make the call it wrote as text/g) ?? []).length,
             toolSummary: envelope?.toolSummary ?? null,
             ...(stop.startsWith('clientError') ? { error: envelope?.error ?? null } : {}),
             stderr: log.split('\n')

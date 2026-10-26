@@ -23,6 +23,7 @@ src/
   buildCheck.ts   after_tool_call / before_agent_finalize: a project changed and not built asks for a build
   writeGuard.ts   before_tool_call: a write or edit of a record file outside every project's plugin folder is stopped,
                   with the path in the project
+  textCalls.ts    before_agent_finalize: an answer that wrote a tool call as text is asked to make it
   manifest.ts     renders openclaw.plugin.json from the tools
   __tests__/      vitest, offline; the doubles are the core's (skyrim-modding-tools-core/testing)
 scripts/

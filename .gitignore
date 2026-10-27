@@ -7,8 +7,13 @@ node_modules
 # The core's skills, copied from node_modules/skyrim-modding-tools-core by npm run build: the core owns them.
 skills/
 
-# The mod projects, where projectsDir puts them unless it says otherwise: the user's own work.
+# The mod projects, where projectsDir put them unless it said otherwise until 2026-10-27: the user's own work.
 projects/
+
+# The ClawHub package npm run stage:clawhub lays out and packs, and clawhub package validate's reports.
+stage/
+out/
+reports/
 
 # Credentials and key material — never commit them.
 *.p12

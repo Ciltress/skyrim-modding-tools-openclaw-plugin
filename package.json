@@ -1,15 +1,24 @@
 {
-  "name": "skyrim-modding-tools-openclaw-plugin",
+  "name": "skyrim-modding-tools",
   "version": "0.1.0",
   "description": "The Skyrim SE modding tools as a native OpenClaw plugin: the tools of skyrim-modding-tools-core under their own names, its skills, and the instructions for the Skyrim agents",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin.git"
+  },
+  "homepage": "https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin/issues"
+  },
   "files": [
-    "dist",
+    "dist/*.js",
     "skills",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "postinstall": "node scripts/link-openclaw.mjs",
@@ -19,15 +28,21 @@
     "test:types": "node scripts/link-openclaw.mjs && tsc -p tsconfig.json --noEmit",
     "eval": "node scripts/eval.mjs",
     "build:helper": "npm --prefix node_modules/skyrim-modding-tools-core run build:helper",
-    "check:helper": "npm --prefix node_modules/skyrim-modding-tools-core run check:helper"
+    "check:helper": "npm --prefix node_modules/skyrim-modding-tools-core run check:helper",
+    "stage:clawhub": "node scripts/stage-clawhub.mjs"
   },
   "author": "Andreas Breit",
   "license": "GPL-3.0-only",
   "engines": {
-    "node": ">=24.18.0"
+    "node": ">=24.22.1"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.10.4"
+    "openclaw": ">=2026.10.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "dependencies": {
     "skyrim-modding-tools-core": "github:Ciltress/skyrim-modding-tools-core#v0.1.16"
@@ -43,10 +58,18 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.10.4"
+      "pluginApi": ">=2026.10.7"
     },
     "build": {
       "openclawVersion": "2026.10.7"
+    },
+    "install": {
+      "clawhubSpec": "clawhub:skyrim-modding-tools",
+      "defaultChoice": "clawhub",
+      "minHostVersion": ">=2026.10.7"
+    },
+    "release": {
+      "publishToClawHub": true
     }
   },
   "allowScripts": {

@@ -180,7 +180,8 @@ const CTX = openClaw.numCtx;
 
 // The plugin's tools, built, on the session's settings: the ground truth and the checks read the instance through them.
 const product = pluginProduct(root);
-const settings = readSettings(openClaw.pluginConfig, root);
+// The session's folder for OpenClaw's state folder: its config names the projects folder, so the default is never used.
+const settings = readSettings(openClaw.pluginConfig, root, openClaw.dir);
 const backend = createBackend(settings.env, { product });
 const plugin = new SkyrimTools(backend, product, settings.env);
 const toolNames = new Set(plugin.toolNames());

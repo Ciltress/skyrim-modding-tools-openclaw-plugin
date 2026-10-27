@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CORE_GUIDES, type Product } from 'skyrim-modding-tools-core';
+import { CORE_GUIDES, defaultProjectsDir, type Product } from 'skyrim-modding-tools-core';
 
 /**
  * The plugin's folder. This file compiles to dist/settings.js and runs from src/ under vitest, both one level
@@ -67,7 +67,8 @@ export const SETTINGS = {
         variable: 'SKYRIM_PROJECTS_DIR',
         schema: { type: 'string' },
         label: 'Projects folder',
-        help: 'Where the mod projects live. Unset: projects in the plugin\'s folder. Make it the modding agents\' working folder too.'
+        help: 'Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw\'s state folder (~/.openclaw), ' +
+            'which an update of the plugin leaves alone. Make it the modding agents\' working folder too.'
     },
     creationKitDir: {
         variable: 'SKYRIM_CK_DIR',
@@ -174,9 +175,9 @@ export const CONFIG_CONTRACTS = {
 } as const;
 
 export interface PluginSettings {
-    /** The settings, by the core's names. */
+    /** The settings, by the core's names; SKYRIM_PROJECTS_DIR always. */
     env: NodeJS.ProcessEnv;
-    /** Where a relative path starts and projects/ is by default: the plugin's folder. */
+    /** Where a relative path starts: the plugin's folder. */
     root: string;
     /** The agents that mod. Empty: no agent gets the instructions or the build check. */
     agents: readonly string[];
@@ -184,15 +185,17 @@ export interface PluginSettings {
 
 /**
  * The plugin's settings from its config, which OpenClaw has checked against CONFIG_SCHEMA. A blank field is unset,
- * left to the core to find or default. `root` is the plugin's folder.
+ * left to the core to find or default — but the projects folder, which the core would put in `root`, the plugin's
+ * folder: an update replaces that folder, so unset, the projects are in OpenClaw's state folder, `stateDir`.
  */
-export function readSettings(config: Record<string, unknown> | undefined, root: string): PluginSettings {
+export function readSettings(config: Record<string, unknown> | undefined, root: string, stateDir: string): PluginSettings {
     const env: NodeJS.ProcessEnv = {};
     for (const [field, setting] of Object.entries(SETTINGS) as [Field, Setting][]) {
         const given = config?.[field];
         const value = setting.value ? setting.value(given) : typeof given === 'string' && given.trim() ? given.trim() : undefined;
         if (value !== undefined) env[setting.variable] = value;
     }
+    env.SKYRIM_PROJECTS_DIR ??= defaultProjectsDir(path.join(stateDir, PLUGIN_ID));
     const agents = Array.isArray(config?.agents) ? config.agents.filter((a): a is string => typeof a === 'string') : [];
     return { env, root, agents };
 }

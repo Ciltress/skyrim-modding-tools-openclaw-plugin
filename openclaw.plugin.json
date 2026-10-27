@@ -34,7 +34,7 @@
       },
       "projectsDir": {
         "type": "string",
-        "description": "Where the mod projects live. Unset: projects in the plugin's folder. Make it the modding agents' working folder too."
+        "description": "Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw's state folder (~/.openclaw), which an update of the plugin leaves alone. Make it the modding agents' working folder too."
       },
       "creationKitDir": {
         "type": "string",
@@ -101,7 +101,7 @@
     },
     "projectsDir": {
       "label": "Projects folder",
-      "help": "Where the mod projects live. Unset: projects in the plugin's folder. Make it the modding agents' working folder too."
+      "help": "Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw's state folder (~/.openclaw), which an update of the plugin leaves alone. Make it the modding agents' working folder too."
     },
     "creationKitDir": {
       "label": "Creation Kit folder",

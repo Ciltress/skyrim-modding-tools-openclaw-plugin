@@ -16,7 +16,7 @@ server gets the nearest equivalent where one exists (the core's ADR-0009).
 src/
   index.ts        the entry: definePluginEntry, the gate service, the hooks
   settings.ts     the plugin's config: a field per core setting, with Settings' labels, sections and the secret
-                  Nexus key; the agents that mod; its Product for the core
+                  Nexus key; the agents that mod; projects in OpenClaw's state folder by default; its Product
   tools.ts        the core's tools as OpenClaw tools: names, direct-only, sequential, prepareArguments =
                   the core's coerceArgs, the MCP server's rules (profile, budget, gate, one retry, latch),
                   failures thrown as the core's message, the code for OpenClaw's log; healthcheck
@@ -33,8 +33,13 @@ scripts/
   eval.mjs            the local-model eval: tasks, checks, the record of a round (npm run eval)
   eval-openclaw.mjs   its session: a copy of the user's OpenClaw config, a proxy before Ollama, `agent exec`
   eval-yaml.mjs       reads the record files a run leaves
-  __tests__/          vitest, plain JavaScript, for the eval's session
+  stage-clawhub.mjs   the ClawHub package: stage/ with the core bundled and its helper built, packed into out/
+  __tests__/          vitest, plain JavaScript, for the eval's session and the staging
+.github/workflows/
+  ci.yml              tests and build, Windows and Linux, every push
+  clawhub-release.yml by hand: Windows launcher, Linux pack, ClawHub's publish workflow (a preview by default)
 openclaw.plugin.json  committed, generated: OpenClaw reads it before loading any code
+THIRD_PARTY_NOTICES.md  the helper's libraries and their licenses; stage-clawhub.mjs refuses one it does not name
 ```
 
 ## Conventions that matter
@@ -63,6 +68,13 @@ openclaw plugins reload skyrim-modding-tools --accept-capabilities
 
 A new core release: `npm install "skyrim-modding-tools-core@git+https://github.com/Ciltress/skyrim-modding-tools-core.git#vX.Y.Z"`,
 `npm approve-scripts skyrim-modding-tools-core`, drop the old pin from `allowScripts`, build, rebuild the helper.
+If the helper's NuGet packages changed, name them in THIRD_PARTY_NOTICES.md, or the ClawHub release refuses them.
+
+**The ClawHub package** (README, "Releasing on ClawHub") is staged, never this checkout: ClawHub installs with
+`npm install --ignore-scripts`, which would leave a `github:` core without dist/ or helper. The staged package.json
+names the core by its exact version and bundles it, without scripts, devDependencies or allowScripts. Check a staged
+package with `clawhub package validate stage` and install it into a profile of its own, never the gateway's:
+`openclaw --profile clawhub-test plugins install out/<tgz> --force --accept-capabilities`.
 
 The gateway logs `skyrim-modding-tools: instructions added to <agent>'s system prompt` once per agent and every
 build-check request, in `%TEMP%\openclaw\openclaw-<date>.log`.

@@ -8,13 +8,15 @@ import { CONFIG_CONTRACTS, CONFIG_GROUPS, CONFIG_SCHEMA, SETTINGS, UI_HINTS, plu
  */
 
 const root = path.resolve('/plugins/skyrim-modding-tools');
+const stateDir = path.resolve('/home/user/.openclaw');
+const projectsInState = path.join(stateDir, 'skyrim-modding-tools', 'projects');
 
 describe('readSettings', () => {
     it('gives the core each field as its setting, and the agents that mod', () => {
         const settings = readSettings({
             modManager: 'mo2', mo2Instance: 'G:\\Modding\\Test', nexusApiKey: 'key', projectsDir: 'D:\\Mods\\projects',
             profile: 'core', maxResponseBytes: 0, capabilityGate: false, agents: ['skyrim-e4b', 3]
-        }, root);
+        }, root, stateDir);
         expect(settings).toEqual({
             env: {
                 SKYRIM_MOD_MANAGER: 'mo2', SKYRIM_MO2_INSTANCE: 'G:\\Modding\\Test', NEXUS_API_KEY: 'key',
@@ -26,8 +28,14 @@ describe('readSettings', () => {
     });
 
     it('leaves a field unset or blank to the core, which finds or defaults it', () => {
-        expect(readSettings({ mo2Instance: '  ', capabilityGate: true }, root)).toEqual({ env: {}, root, agents: [] });
-        expect(readSettings(undefined, root)).toEqual({ env: {}, root, agents: [] });
+        const defaults = { env: { SKYRIM_PROJECTS_DIR: projectsInState }, root, agents: [] };
+        expect(readSettings({ mo2Instance: '  ', capabilityGate: true }, root, stateDir)).toEqual(defaults);
+        expect(readSettings(undefined, root, stateDir)).toEqual(defaults);
+    });
+
+    it('keeps the projects in OpenClaw\'s state folder unless projectsDir says otherwise: an update replaces the plugin\'s folder', () => {
+        expect(readSettings({ projectsDir: ' ' }, root, stateDir).env.SKYRIM_PROJECTS_DIR).toBe(projectsInState);
+        expect(readSettings({ projectsDir: 'projects' }, root, stateDir).env.SKYRIM_PROJECTS_DIR).toBe('projects');
     });
 });
 
@@ -53,7 +61,7 @@ describe('the config OpenClaw shows', () => {
 describe('pluginProduct', () => {
     it('serves the core\'s two guides under the plugin\'s name', () => {
         const product = pluginProduct('/root');
-        expect(product.name).toBe('skyrim-modding-tools-openclaw-plugin');
+        expect(product.name).toBe('skyrim-modding-tools');
         expect(product.guides.map(guide => guide.id)).toEqual(['router', 'tools']);
         expect(product.root).toBe('/root');
     });

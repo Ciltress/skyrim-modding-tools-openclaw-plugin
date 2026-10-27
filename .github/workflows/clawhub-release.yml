@@ -1,0 +1,118 @@
+name: ClawHub release
+
+# By hand, from the Actions tab: the package ClawHub publishes (npm run stage:clawhub), the core bundled with its helper
+# built. The Windows launcher is built on Windows; the package is packed on Linux, where the Linux launcher keeps its
+# executable bit. ClawHub's own workflow then checks and publishes it: a preview unless dry_run is unticked. A real
+# publish goes through trusted publishing, set up once after the first publish (README, "Releasing on ClawHub").
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview without publishing
+        required: true
+        type: boolean
+        default: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  launcher:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.1
+          cache: "npm"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install dependencies
+        run: npm ci
+
+      # SkyrimHelper.exe, the application host with the CET opt-out Mod Organizer's virtual file system needs.
+      - name: Build helper
+        run: npm run build:helper
+
+      - name: Upload launcher
+        uses: actions/upload-artifact@v7
+        with:
+          name: helper-launcher-windows
+          path: node_modules/skyrim-modding-tools-core/helper/bin/SkyrimHelper.exe
+          if-no-files-found: error
+
+  package:
+    needs: launcher
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.1
+          cache: "npm"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # The host: npm install links it for the SDK's types (scripts/link-openclaw.mjs).
+      - name: Install OpenClaw
+        run: npm install -g openclaw@2026.10.7
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test Unit
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The DLLs and the Linux launcher.
+      - name: Build helper
+        run: npm run build:helper
+
+      - name: Download launcher
+        uses: actions/download-artifact@v8
+        with:
+          name: helper-launcher-windows
+          path: launcher
+
+      - name: Stage
+        run: npm run stage:clawhub -- --launcher launcher/SkyrimHelper.exe
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: clawhub-package
+          path: out/*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: package
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    uses: openclaw/clawhub/.github/workflows/package-publish.yml@9d49df109d4ad3dc8a6ecf05d26b39f46d294721
+    with:
+      dry_run: ${{ inputs.dry_run }}
+      package_artifact_name: clawhub-package

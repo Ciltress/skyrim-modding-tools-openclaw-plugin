@@ -19,8 +19,21 @@ What the plugin does that an MCP server cannot in OpenClaw:
 
 ## Install
 
-Needs OpenClaw 2026.10.4 or later (2026.10.7 recommended; it needs Node.js 24.22.1) and the .NET 10 SDK for the
-plugin helper.
+### From ClawHub
+
+Needs OpenClaw 2026.10.7 or later and the .NET 10 runtime for the plugin helper: on Windows its installer from
+[dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/10.0), on Linux your distribution's package
+(`dotnet-runtime` on Arch and CachyOS). Windows and Linux on x64 only.
+
+```bash
+openclaw plugins install clawhub:skyrim-modding-tools
+```
+
+The package brings the core and its helper, built.
+
+### From source
+
+Needs OpenClaw 2026.10.7 or later (on Node.js 24.22.1) and the .NET 10 SDK for the plugin helper.
 
 ```bash
 git clone https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin
@@ -30,6 +43,8 @@ npm run build
 npm run build:helper
 openclaw plugins install -l .
 ```
+
+### Settings
 
 Then set it up in OpenClaw's Settings page — *Plugins → Skyrim Modding Tools*: the Mod Organizer instance (or
 Amethyst), the projects folder, the agents that mod, a Nexus Mods API key if you want the Nexus tools — or in
@@ -67,8 +82,9 @@ Amethyst), the projects folder, the agents that mod, a Nexus Mods API key if you
 The tools are optional: an agent gets them only when its `tools.allow` names the plugin (or a tool). Every field
 is listed in Settings with what it does; the rarer ones — the Creation Kit and Papyrus compiler, Amethyst's folder,
 a Wine prefix, the tool profile — are under *advanced*. Settings shows the Nexus key hidden, and it may be a
-SecretRef. A path may start with `~`; a relative one is the plugin's folder's, and without `projectsDir` the
-projects are in `projects/` there.
+SecretRef. A path may start with `~`; a relative one is the plugin's folder's. Without `projectsDir` the projects
+are in `skyrim-modding-tools/projects` in OpenClaw's state folder (`~/.openclaw`, or the profile's), which an update
+of the plugin leaves alone.
 
 ## Development
 
@@ -83,6 +99,28 @@ openclaw plugins reload skyrim-modding-tools --accept-capabilities
 
 See [AGENTS.md](AGENTS.md).
 
+### Releasing on ClawHub
+
+ClawHub installs a package with `npm install --ignore-scripts`, so the package carries the core, bundled, with its
+helper built for both systems: `npm run stage:clawhub` lays it out in `stage/` and packs it into `out/`. The
+*ClawHub release* workflow (Actions tab, run by hand) builds `SkyrimHelper.exe` on Windows, packs on Linux, where
+the Linux launcher keeps its executable bit, and hands the package to ClawHub's publish workflow: a preview while
+*dry_run* is ticked.
+
+The first release is published by hand, which creates the package on ClawHub: run the workflow as a preview,
+download its `clawhub-package` artifact, then
+
+```bash
+npx clawhub login
+npx clawhub package publish ./skyrim-modding-tools-<version>.tgz
+npx clawhub package trusted-publisher set skyrim-modding-tools \
+  --repository Ciltress/skyrim-modding-tools-openclaw-plugin --workflow-filename clawhub-release.yml
+```
+
+From then on: raise `version` in package.json, push, and run the workflow with *dry_run* unticked.
+`npx clawhub package moderation-status skyrim-modding-tools` shows the review of the latest release.
+
 ## License
 
-GPL-3.0-only, as the core.
+GPL-3.0-only, as the core. The ClawHub package also ships the helper's libraries, each under its own license:
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

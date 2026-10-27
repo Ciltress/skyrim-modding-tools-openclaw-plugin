@@ -1,5 +1,6 @@
 import { buildJsonPluginConfigSchema, definePluginEntry, type OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry';
-import { createBackend, defaultProjectsDir, readConfiguration, stopBackends } from 'skyrim-modding-tools-core';
+import { resolveStateDir } from 'openclaw/plugin-sdk/state-paths';
+import { createBackend, readConfiguration, stopBackends } from 'skyrim-modding-tools-core';
 import { BuildCheck } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
@@ -13,8 +14,9 @@ import { WriteGuard } from './writeGuard.js';
  * keeps their record files where a build reads them.
  */
 export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools {
-    // Where the plugin is installed, not the copy of it the gateway runs: projects/ and relative paths stay put.
-    const settings = readSettings(api.pluginConfig, api.rootDir ?? PLUGIN_ROOT);
+    // Where the plugin is installed, not the copy of it the gateway runs: relative paths stay put. The projects are in
+    // the state folder of the gateway's profile unless projectsDir says otherwise.
+    const settings = readSettings(api.pluginConfig, api.rootDir ?? PLUGIN_ROOT, resolveStateDir(process.env));
     const product = pluginProduct(settings.root);
     const backend = createBackend(settings.env, { product });
     const tools = new SkyrimTools(backend, product, settings.env);
@@ -26,8 +28,7 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         api.registerService({ id: PLUGIN_ID, start: () => { void tools.ensureGate(); }, stop: () => { stopBackends(); } });
     }
 
-    const { paths } = readConfiguration(settings.env, { root: settings.root });
-    const projectsDir = paths.SKYRIM_PROJECTS_DIR ?? defaultProjectsDir(settings.root);
+    const projectsDir = readConfiguration(settings.env, { root: settings.root }).paths.SKYRIM_PROJECTS_DIR!;
     const check = new BuildCheck(projectsDir, settings.agents);
     const guard = new WriteGuard(projectsDir, agentId => check.applies(agentId));
 

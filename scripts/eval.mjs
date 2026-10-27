@@ -9,9 +9,13 @@
  *   node scripts/eval.mjs --openclaw-agent skyrim-e4b [--model gemma4:e4b] [--profile all] [--runs 3]
  *                         [--authoring-runs 5] [--tasks find,read] [--max-turns 25] [--think true|false|<level>]
  *                         [--detailed] [--out <file>] [--ollama http://localhost:11434] [--settle 60]
- *                         [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
+ *                         [--provider ollama|<provider>] [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
  *
  * The agent is --openclaw-agent, else the plugin's only modding agent, else the configuration's only agent.
+ * --provider names the model's provider in OpenClaw's configuration: `ollama` (the default) is Ollama at --ollama;
+ * another is a server with OpenAI's API, an `openai-completions` provider (Strata: --provider strata --model
+ * <the model id it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
+ * loads nothing, and the speed is the server's own timings, when it gives them.
  * --authoring-runs sets the runs of the tasks that write records (sword, spell, npc, note, and their `+detailed`
  * runs), --runs those of the others; it defaults to --runs. Every miss of rounds 24–31 was an authoring task's, and
  * with three runs each a round's noise was about ±3 of 39. --think true|false|<level> passes a thinking level for the
@@ -47,7 +51,9 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
-import { NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion, runOpenClaw, startProxy, writeSessionConfig } from './eval-openclaw.mjs';
+import {
+    NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion, providerServer, runOpenClaw, startProxy, writeSessionConfig
+} from './eval-openclaw.mjs';
 import { leftEscape, translatedValue } from './eval-yaml.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,6 +71,7 @@ const { values: opt } = parseArgs({
         out: { type: 'string' },
         detailed: { type: 'boolean', default: false },
         ollama: { type: 'string', default: process.env.OLLAMA_HOST || 'localhost' },
+        provider: { type: 'string', default: 'ollama' },
         openclaw: { type: 'string' },
         'openclaw-config': { type: 'string' },
         'openclaw-agent': { type: 'string' }
@@ -129,53 +136,70 @@ const { pluginProduct, readSettings } = await dist('settings.js');
 const { SkyrimTools, failureText } = await dist('tools.js');
 const { agentInstructions } = await dist('instructions.js');
 
-// --- Ollama -------------------------------------------------------------------------------------
+// --- The model's server: Ollama, or one with OpenAI's API ----------------------------------------
 
-async function ollama(route, body) {
-    const response = await fetch(`${OLLAMA}${route}`, {
+const configFile = openClawConfigFile(opt['openclaw-config']);
+const SERVER = (() => {
+    try { return providerServer(configFile, opt.provider, OLLAMA); } catch (error) { return fail(error.message); }
+})();
+const OPENAI = SERVER.api === 'openai-completions';
+/** The server, named in messages and the round's entry. */
+const SERVER_NAME = OPENAI ? `${opt.provider} (OpenAI API)` : 'Ollama';
+
+async function request(base, route, body) {
+    const response = await fetch(`${base.replace(/\/$/, '')}${route}`, {
         method: body ? 'POST' : 'GET',
         headers: body ? { 'content-type': 'application/json' } : undefined,
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(TURN_TIMEOUT_MS)
     });
     const text = await response.text();
-    if (!response.ok) throw new Error(`Ollama ${route} answered ${response.status}: ${text.slice(0, 500)}`);
+    if (!response.ok) throw new Error(`${SERVER_NAME} ${route} answered ${response.status}: ${text.slice(0, 500)}`);
     return JSON.parse(text);
 }
+const ollama = (route, body) => request(OLLAMA, route, body);
+const openAi = (route, body) => request(SERVER.url, route, body);
 
-const tags = await ollama('/api/tags').catch(error => fail(`Ollama is not reachable at ${OLLAMA}: ${error.message}`));
-if (!tags.models.some(m => m.name === opt.model || m.model === opt.model)) {
-    fail(`Ollama has no model '${opt.model}'. Pulled: ${tags.models.map(m => m.name).join(', ')}.`);
+if (OPENAI) {
+    const served = await openAi('/models').catch(error => fail(`${SERVER_NAME} is not reachable at ${SERVER.url}: ${error.message}`));
+    if (!served.data?.some(m => m.id === opt.model)) {
+        fail(`${SERVER_NAME} serves no model '${opt.model}'. Served: ${(served.data ?? []).map(m => m.id).join(', ')}.`);
+    }
+} else {
+    const tags = await ollama('/api/tags').catch(error => fail(`Ollama is not reachable at ${OLLAMA}: ${error.message}`));
+    if (!tags.models.some(m => m.name === opt.model || m.model === opt.model)) {
+        fail(`Ollama has no model '${opt.model}'. Pulled: ${tags.models.map(m => m.name).join(', ')}.`);
+    }
 }
-const ollamaVersion = (await ollama('/api/version').catch(() => ({}))).version;
+const ollamaVersion = OPENAI ? undefined : (await ollama('/api/version').catch(() => ({}))).version;
 
 // --- OpenClaw and the plugin --------------------------------------------------------------------
 
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-projects-'));
 leftovers.push(projectsDir);
 
-// OpenClaw: its entry script, the proxy in front of Ollama, and the session's configuration.
+// OpenClaw: its entry script, the proxy in front of the model's server, and the session's configuration.
 const openClaw = await (async () => {
     const entry = openClawEntry(opt.openclaw)
         ?? fail('OpenClaw was not found: install it (npm install -g openclaw), or pass --openclaw <path to openclaw.mjs>.');
     let version;
     try { version = openClawVersion(entry); } catch (error) { fail(`OpenClaw did not start (${entry}): ${error.message}`); }
-    const configFile = openClawConfigFile(opt['openclaw-config']);
     if (!fs.existsSync(configFile)) fail(`OpenClaw's configuration ${configFile} does not exist: run openclaw onboard, or pass --openclaw-config.`);
-    const proxy = await startProxy(OLLAMA);
+    const proxy = await startProxy(SERVER.url, SERVER.api);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-openclaw-'));
     leftovers.push(dir);
     let session;
     try {
         session = writeSessionConfig({
-            dir, configFile, proxyUrl: proxy.url, model: opt.model, root, projectsDir, agent: opt['openclaw-agent'], profile: opt.profile
+            dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir,
+            agent: opt['openclaw-agent'], profile: opt.profile
         });
     } catch (error) {
         fail(error.message);
     }
     return { entry, version, configFile, proxy, dir, ...session };
 })();
-/** The context the tasks run at: what OpenClaw asks Ollama for (nothing: Ollama's default). */
+/** The context the tasks run at: what OpenClaw asks Ollama for (nothing: Ollama's default), or an OpenAI server's window. */
 const CTX = openClaw.numCtx;
 
 // The plugin's tools, built, on the session's settings: the ground truth and the checks read the instance through them.
@@ -225,7 +249,8 @@ async function weapon(editorId) {
 // the commit made during its last task).
 const BUILD = measuredBuild();
 console.log(`eval: ${opt.model} @ num_ctx ${CTX ?? 'Ollama default'}, profile ${opt.profile}, ${RUNS} run(s) per task` +
-    (AUTHORING_RUNS === RUNS ? '' : `, ${AUTHORING_RUNS} per authoring task`) + `, build ${BUILD}, Ollama ${ollamaVersion ?? '?'}`);
+    (AUTHORING_RUNS === RUNS ? '' : `, ${AUTHORING_RUNS} per authoring task`) + `, build ${BUILD}, ` +
+    (OPENAI ? `${SERVER_NAME} at ${SERVER.url}` : `Ollama ${ollamaVersion ?? '?'}`));
 console.log(`eval: through ${openClaw.version} (${openClaw.entry}), on the configuration ${openClaw.configFile}` +
     `${openClaw.agentId ? `, agent '${openClaw.agentId}'` : ''}` +
     `${openClaw.workspaceFiles.length ? ` with ${openClaw.workspaceFiles.map(f => f.name).join(', ')}` : ''}` +
@@ -557,7 +582,7 @@ async function runTask(task, run) {
     emptyProjects();
     const started = Date.now();
     const session = await runOpenClaw({
-        entry: openClaw.entry, prompt: task.prompt, model: opt.model, cwd: projectsDir, configFile: openClaw.file,
+        entry: openClaw.entry, prompt: task.prompt, provider: opt.provider, model: opt.model, cwd: projectsDir, configFile: openClaw.file,
         workspaceFiles: openClaw.workspaceFiles, proxy: openClaw.proxy, toolNames, instructionsLine,
         maxTurns: MAX_TURNS, timeoutMs: TURN_TIMEOUT_MS, thinking: THINKING
     });
@@ -614,17 +639,24 @@ console.log(`eval: ${offered.length} of the plugin's tools offered, ${toolListBy
  * Loads the model before the first task, with a short "hi" at the context the tasks use, so no task's
  * time includes the load. When OpenClaw asks for no context size, the warm-up sends none either:
  * Ollama's default is then what both use. A model that was not loaded yet — a switch from another —
- * is given --settle seconds more before the tasks start.
+ * is given --settle seconds more before the tasks start. An OpenAI server holds its model at its own context.
  */
 async function warmUp() {
-    const resident = (await ollama('/api/ps').catch(() => ({ models: [] }))).models
-        .some(m => (m.name === opt.model || m.model === opt.model) && (CTX === undefined || m.context_length === CTX));
+    const resident = OPENAI
+        // A server that names no state holds its model loaded.
+        ? (await openAi('/models').catch(() => ({ data: [] }))).data.some(m => m.id === opt.model && (m.status?.value ?? 'loaded') === 'loaded')
+        : (await ollama('/api/ps').catch(() => ({ models: [] }))).models
+            .some(m => (m.name === opt.model || m.model === opt.model) && (CTX === undefined || m.context_length === CTX));
     const started = Date.now();
-    await ollama('/api/chat', {
-        model: opt.model, stream: false, think: false,
-        messages: [{ role: 'user', content: 'hi' }],
-        options: { ...(CTX === undefined ? {} : { num_ctx: CTX }), num_predict: 16 }
-    });
+    if (OPENAI) {
+        await openAi('/chat/completions', { model: opt.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 16 });
+    } else {
+        await ollama('/api/chat', {
+            model: opt.model, stream: false, think: false,
+            messages: [{ role: 'user', content: 'hi' }],
+            options: { ...(CTX === undefined ? {} : { num_ctx: CTX }), num_predict: 16 }
+        });
+    }
     const seconds = Math.round((Date.now() - started) / 100) / 10;
     console.log(`eval: warm-up "hi" answered in ${seconds} s${resident ? ' (the model was loaded already)' : ''}`);
     if (!resident && SETTLE_SECONDS > 0) {
@@ -665,7 +697,7 @@ try {
     cleanUp();
 }
 
-const loaded = await ollama('/api/ps').catch(() => ({ models: [] }));
+const loaded = OPENAI ? { models: [] } : await ollama('/api/ps').catch(() => ({ models: [] }));
 
 /**
  * How fast the model reads a prompt and writes an answer on this machine, at this context: the tool
@@ -673,14 +705,24 @@ const loaded = await ollama('/api/ps').catch(() => ({ models: [] }));
  * from the tasks, whose turns reuse Ollama's prompt cache and answer in a few dozen tokens — figures
  * taken from them would not compare between rounds. A fresh first line keeps the cache out of it here.
  * The reference is the core's, rendered as the MCP server's docs/Tool-Reference.md is, which rounds up to 63 read.
+ * An OpenAI server is timed by the llama.cpp `timings` of its answer (Strata's too); one without them is not measured.
  */
 async function measureSpeed() {
     const doc = renderToolReference(collectToolFamilies(product));
     const samples = [];
     for (let i = 0; i < 3; i++) {
+        const prompt = `Run ${Date.now()}-${i}.\n\n${doc}\n\nSummarise the document above in about 250 words.`;
+        if (OPENAI) {
+            const { timings } = await openAi('/chat/completions', {
+                model: opt.model, messages: [{ role: 'user', content: prompt }], max_tokens: 300, seed: i
+            });
+            if (!timings) throw new Error(`${SERVER_NAME} gives no timings with its answer`);
+            samples.push({ promptTokens: timings.prompt_n, prompt: timings.prompt_per_second, generation: timings.predicted_per_second });
+            continue;
+        }
         const reply = await ollama('/api/generate', {
             model: opt.model, stream: false, think: false,
-            prompt: `Run ${Date.now()}-${i}.\n\n${doc}\n\nSummarise the document above in about 250 words.`,
+            prompt,
             options: { ...(CTX === undefined ? {} : { num_ctx: CTX }), num_predict: 300, seed: i }
         });
         samples.push({
@@ -756,8 +798,10 @@ const report = {
     client: 'openclaw-plugin',
     openClaw: openClawSummary,
     ollamaVersion: ollamaVersion ?? null,
+    ...(OPENAI ? { server: { provider: opt.provider, api: SERVER.api, url: SERVER.url } } : {}),
     warmup,
-    numCtx: first?.numCtx ?? 'Ollama default',
+    // OpenClaw asks an OpenAI server for no context: it runs at the window it was started with.
+    numCtx: OPENAI ? CTX ?? '?' : first?.numCtx ?? 'Ollama default',
     think: String(first?.think ?? "OpenClaw's default"),
     runs: RUNS,
     authoringRuns: AUTHORING_RUNS,
@@ -801,8 +845,8 @@ const rate = value => value === undefined ? '?' : `~${value.toLocaleString('en-U
 if (speed) console.log(`eval: prompt ${rate(speed.promptPerSecond)} (${speed.promptTokens} tokens), generation ${rate(speed.generationPerSecond)}`);
 
 // The entry for docs/research/local-model-evals.md, where every round is recorded. The client — the plugin in
-// OpenClaw — and the Ollama build are named beside the profile.
-const setup = [`\`${report.profile}\``, 'OpenClaw plugin', ...(ollamaVersion ? [`Ollama ${ollamaVersion}`] : [])].join(', ');
+// OpenClaw — and the Ollama build, or the OpenAI server, are named beside the profile.
+const setup = [`\`${report.profile}\``, 'OpenClaw plugin', ...(OPENAI ? [SERVER_NAME] : ollamaVersion ? [`Ollama ${ollamaVersion}`] : [])].join(', ');
 const openClawTools = !first ? '? tools'
     : `${first.tools} tools, ${first.pluginToolsListed} of them the plugin's${first.toolSearch ? ', the rest behind Tool Search' : ''}`;
 const entry = [
@@ -812,7 +856,7 @@ const entry = [
     `Through ${openClawSummary.version}: first prompt ${openClawSummary.firstPromptTokens} tokens (${openClawTools}), ` +
     `the plugin's instructions in ${results.length - openClawSummary.instructionsMissing} of ${results.length} prompts, ` +
     `think ${report.think}, num_ctx ${report.numCtx}, num_predict ${first?.numPredict ?? 'none'}, ` +
-    `temperature ${first?.temperature ?? "the Modelfile's"}, ` +
+    `temperature ${first?.temperature ?? (OPENAI ? "the server's" : "the Modelfile's")}, ` +
     `first token after ${openClawSummary.medianFirstTokenSeconds ?? '?'} s (median of the first turns), ` +
     `${openClawSummary.cutAnswers} answers cut off, ${openClawSummary.lengthStops} turns ended at the length limit, ` +
     `${openClawSummary.sideRequests} side requests; the build check asked for a build in ${openClawSummary.buildCheckAsked} ` +

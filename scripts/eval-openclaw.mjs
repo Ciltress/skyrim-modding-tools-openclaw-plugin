@@ -1,18 +1,19 @@
 /**
- * The eval's client: OpenClaw itself, headless (`openclaw agent exec`), with the model served by Ollama — the way a
- * user of OpenClaw with a local model drives this plugin. Used by eval.mjs.
+ * The eval's client: OpenClaw itself, headless (`openclaw agent exec`), with the model served by Ollama, or by a server
+ * with OpenAI's API that the user's configuration names as an `openai-completions` provider (Strata) — the way a user
+ * of OpenClaw with a local model drives this plugin. Used by eval.mjs.
  *
  * The session is the user's own OpenClaw configuration (`~/.openclaw/openclaw.json`, or --openclaw-config), changed
  * only where a measurement needs it: one agent is kept — --openclaw-agent, else the plugin's only modding agent, else
  * the only one — working in the eval's fresh projects folder; the plugin runs from this checkout on that folder, for
- * that agent, and is the only source of Skyrim tools (no MCP server of the user's); the Ollama provider points at a
+ * that agent, and is the only source of Skyrim tools (no MCP server of the user's); the model's provider points at a
  * logging proxy; deployProject, installMod, downloadNexusFile and disableMod are denied (they write into the instance
  * or download), and so are the shell (`exec`, `process`) and the tools that reach a paired device (`nodes`, the file
  * tools), since nobody watches the run; the agent's workspace files (AGENTS.md, SOUL.md, USER.md…) are copied into
  * each run's folder and put into the prompt, as a gateway does — `agent exec` makes its folder the workspace and
  * leaves them out unless told; an unset tool profile is set to `full`, which is what an unset one means in the
  * gateway — `agent exec` would take `coding`, which leaves out every native plugin tool; the model under test is
- * configured — with the settings of the configuration's first Ollama model when it has no entry of its own — and
+ * configured — with the settings of its provider's first model when it has no entry of its own — and
  * allowed; the gateway section is left out. Everything else is the user's — Tool Search, the thinking level, the
  * context, the plugin's hooks — so what is measured is what they get.
  *
@@ -67,14 +68,106 @@ export function openClawVersion(entry) {
 }
 
 /**
- * A pass-through to Ollama on a free local port. Every request, and how its answer streamed back, is pushed to
- * `log`; `log.length = 0` starts a new run's record. A conversation request past `limit` is refused and `onLimit`
- * called — the eval's turn limit, which OpenClaw has no flag for.
+ * The server of the model's provider: `ollama` is Ollama at `ollama` (--ollama), whatever the configuration says;
+ * another is a provider of the user's configuration with OpenAI's API (`openai-completions`), at its baseUrl.
  */
-export async function startProxy(ollama) {
-    const target = new URL(ollama);
-    const proxy = { url: '', log: [], limit: Infinity, onLimit: null, close: null };
-    const server = http.createServer((req, res) => {
+export function providerServer(configFile, provider, ollama) {
+    if (provider === 'ollama') return { api: 'ollama', url: ollama };
+    let providers = {};
+    try { providers = JSON.parse(fs.readFileSync(configFile, 'utf8')).models?.providers ?? {}; } catch { /* named below */ }
+    const entry = providers[provider];
+    if (!entry) throw new Error(`OpenClaw's configuration ${configFile} has no provider '${provider}'; it has ${Object.keys(providers).join(', ') || 'none'}`);
+    if (entry.api !== 'openai-completions' || !entry.baseUrl) {
+        throw new Error(`The provider '${provider}' is no openai-completions provider with a baseUrl: the eval reads Ollama's API and OpenAI's`);
+    }
+    return { api: entry.api, url: entry.baseUrl };
+}
+
+/** Takes one line of Ollama's answer — a JSON object a line, or the whole unstreamed answer — into its request's entry. */
+function takeOllamaLine(entry, line, started) {
+    let event;
+    try { event = JSON.parse(line); } catch { return; }
+    const message = event.message;
+    if (message) {
+        if ((message.content || message.thinking || message.tool_calls) && entry.firstTokenMs === null) {
+            entry.firstTokenMs = Date.now() - started;
+        }
+        entry.content += message.content ?? '';
+        entry.thinking += message.thinking ?? '';
+        if (message.tool_calls) entry.toolCalls.push(...message.tool_calls);
+    }
+    if (event.error) entry.error = event.error;
+    if (event.done) {
+        entry.done = true;
+        entry.doneReason = event.done_reason;
+        entry.promptTokens = event.prompt_eval_count ?? 0;
+        entry.cachedTokens = event.prompt_eval_cached_count ?? 0;
+        entry.outputTokens = event.eval_count ?? 0;
+    }
+}
+
+/**
+ * Takes one line of an OpenAI answer — a `data:` event of the stream, or the whole unstreamed answer — into its
+ * request's entry. A streamed tool call comes in pieces under its index, collected in `pieces`.
+ */
+function takeOpenAiLine(entry, line, started, pieces) {
+    const data = line.replace(/^data:\s*/, '').trim();
+    if (data === '[DONE]') {
+        entry.done = true;
+        return;
+    }
+    let event;
+    try { event = JSON.parse(data); } catch { return; }
+    if (event.error) entry.error = event.error.message ?? event.error;
+    const choice = event.choices?.[0];
+    const part = choice?.delta ?? choice?.message;
+    if (part) {
+        const thinking = part.reasoning_content ?? part.reasoning ?? '';
+        if ((part.content || thinking || part.tool_calls?.length) && entry.firstTokenMs === null) {
+            entry.firstTokenMs = Date.now() - started;
+        }
+        entry.content += part.content ?? '';
+        entry.thinking += thinking;
+        for (const piece of part.tool_calls ?? []) {
+            const call = (pieces[piece.index ?? pieces.length] ??= { name: '', arguments: '' });
+            call.name += piece.function?.name ?? '';
+            call.arguments += piece.function?.arguments ?? '';
+        }
+    }
+    if (choice?.finish_reason) {
+        entry.done = true;
+        entry.doneReason = choice.finish_reason;
+    }
+    if (event.usage) {
+        entry.promptTokens = event.usage.prompt_tokens ?? 0;
+        entry.cachedTokens = event.usage.prompt_tokens_details?.cached_tokens ?? 0;
+        entry.outputTokens = event.usage.completion_tokens ?? 0;
+    }
+}
+
+/**
+ * The tool calls of an OpenAI answer, whole, in Ollama's shape: their arguments an object, as Ollama gives them, so
+ * that only arguments that do not parse stay text (a record's argsWereText).
+ */
+function openAiToolCalls(pieces) {
+    return pieces.filter(Boolean).map(call => {
+        let args = call.arguments;
+        try { args = JSON.parse(call.arguments || '{}'); } catch { /* kept as text */ }
+        return { function: { name: call.name, arguments: args } };
+    });
+}
+
+/**
+ * A pass-through to the model's server — Ollama's API, or OpenAI's (`api` openai-completions) — on a free local port;
+ * `baseUrl` is the address the provider is given, the server's own path kept. Every request, and how its answer
+ * streamed back, is pushed to `log`; `log.length = 0` starts a new run's record. A conversation request past `limit`
+ * is refused and `onLimit` called — the eval's turn limit, which OpenClaw has no flag for.
+ */
+export async function startProxy(server, api = 'ollama') {
+    const target = new URL(server);
+    const openAi = api === 'openai-completions';
+    const proxy = { url: '', baseUrl: '', log: [], limit: Infinity, onLimit: null, close: null };
+    const listener = http.createServer((req, res) => {
         const started = Date.now();
         const chunks = [];
         req.on('data', c => chunks.push(c));
@@ -89,8 +182,13 @@ export async function startProxy(ollama) {
                 toolNames: (body?.tools ?? []).map(t => t.function?.name),
                 toolsBytes: body?.tools ? Buffer.byteLength(JSON.stringify(body.tools)) : 0,
                 systemChars: system.length,
-                think: body?.think, numCtx: body?.options?.num_ctx, numPredict: body?.options?.num_predict,
-                temperature: body?.options?.temperature,
+                ...(openAi ? {
+                    think: body?.reasoning_effort ?? body?.reasoning?.effort, numCtx: undefined,
+                    numPredict: body?.max_completion_tokens ?? body?.max_tokens, temperature: body?.temperature
+                } : {
+                    think: body?.think, numCtx: body?.options?.num_ctx, numPredict: body?.options?.num_predict,
+                    temperature: body?.options?.temperature
+                }),
                 status: null, firstTokenMs: null, ms: null, done: false, doneReason: null, abandoned: false,
                 promptTokens: null, cachedTokens: null, outputTokens: null,
                 content: '', thinking: '', toolCalls: []
@@ -109,30 +207,14 @@ export async function startProxy(ollama) {
             }, answer => {
                 entry.status = answer.statusCode;
                 res.writeHead(answer.statusCode, answer.headers);
-                // Ollama streams one JSON object a line; unstreamed, the whole answer is one.
+                // Ollama streams one JSON object a line, OpenAI's API one `data:` event; unstreamed, the whole answer is one.
                 const decoder = new StringDecoder('utf8');
                 let tail = '';
+                const pieces = [];
                 const take = line => {
                     if (!line.trim()) return;
-                    let event;
-                    try { event = JSON.parse(line); } catch { return; }
-                    const message = event.message;
-                    if (message) {
-                        if ((message.content || message.thinking || message.tool_calls) && entry.firstTokenMs === null) {
-                            entry.firstTokenMs = Date.now() - started;
-                        }
-                        entry.content += message.content ?? '';
-                        entry.thinking += message.thinking ?? '';
-                        if (message.tool_calls) entry.toolCalls.push(...message.tool_calls);
-                    }
-                    if (event.error) entry.error = event.error;
-                    if (event.done) {
-                        entry.done = true;
-                        entry.doneReason = event.done_reason;
-                        entry.promptTokens = event.prompt_eval_count ?? 0;
-                        entry.cachedTokens = event.prompt_eval_cached_count ?? 0;
-                        entry.outputTokens = event.eval_count ?? 0;
-                    }
+                    if (openAi) takeOpenAiLine(entry, line, started, pieces);
+                    else takeOllamaLine(entry, line, started);
                 };
                 answer.on('data', chunk => {
                     res.write(chunk);
@@ -142,6 +224,7 @@ export async function startProxy(ollama) {
                 });
                 answer.on('end', () => {
                     take(tail + decoder.end());
+                    if (openAi) entry.toolCalls.push(...openAiToolCalls(pieces));
                     entry.ms = Date.now() - started;
                     res.end();
                 });
@@ -152,7 +235,7 @@ export async function startProxy(ollama) {
                 if (!res.headersSent) res.writeHead(502);
                 res.end();
             });
-            // Given up on, the request is ended at Ollama too: left open, bonsai's looping turn went on 36 minutes after
+            // Given up on, the request is ended at the server too: left open, bonsai's looping turn went on 36 minutes after
             // its run timed out at 20, and the next run's first turn waited 17 of them (eval round 33).
             res.on('close', () => {
                 if (res.writableEnded) return;
@@ -162,9 +245,10 @@ export async function startProxy(ollama) {
             upstream.end(raw);
         });
     });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    proxy.url = `http://127.0.0.1:${server.address().port}`;
-    proxy.close = () => server.close();
+    await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
+    proxy.url = `http://127.0.0.1:${listener.address().port}`;
+    proxy.baseUrl = `${proxy.url}${target.pathname.replace(/\/$/, '')}`;
+    proxy.close = () => listener.close();
     return proxy;
 }
 
@@ -178,11 +262,12 @@ function holdsPlugin(folder) {
 }
 
 /**
- * The session's configuration: the user's, with the changes the header names. Returns its file and what the run
- * will use of it: the context OpenClaw asks Ollama for, the model entry copied when the model had none, the agent,
- * its workspace files, and the plugin's config — the settings the eval's own reads of the instance use too.
+ * The session's configuration: the user's, with the changes the header names; `proxyUrl` is the address the model's
+ * provider is given. Returns its file and what the run will use of it: the context OpenClaw asks Ollama for (an
+ * OpenAI server's window), the model entry copied when the model had none, the agent, its workspace files, and the
+ * plugin's config — the settings the eval's own reads of the instance use too.
  */
-export function writeSessionConfig({ dir, configFile, proxyUrl, model, root, projectsDir, agent, profile }) {
+export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, agent, profile }) {
     let config;
     try {
         config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -201,7 +286,10 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, model, root, pro
     delete config.gateway;
 
     const providers = ((config.models ??= {}).providers ??= {});
-    const provider = (providers.ollama ??= { api: 'ollama', apiKey: 'ollama-local', models: [] });
+    if (providerId !== 'ollama' && !providers[providerId]) {
+        throw new Error(`OpenClaw's configuration ${configFile} has no provider '${providerId}'`);
+    }
+    const provider = (providers[providerId] ??= { api: 'ollama', apiKey: 'ollama-local', models: [] });
     provider.baseUrl = proxyUrl;
     provider.models ??= [];
     let entry = provider.models.find(m => m.id === model);
@@ -252,15 +340,15 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, model, root, pro
         })(config);
     }
 
-    // The model under test is the primary one, allowed and set up wherever another Ollama model is.
-    const ref = `ollama/${model}`;
+    // The model under test is the primary one, allowed and set up wherever another model of its provider is.
+    const ref = `${providerId}/${model}`;
     const defaults = (agents.defaults ??= {});
     defaults.model = { primary: ref };
-    const likeOllama = models => models && !models[ref]
-        ? Object.keys(models).find(key => key.startsWith('ollama/'))
+    const likeIt = models => models && !models[ref]
+        ? Object.keys(models).find(key => key.startsWith(`${providerId}/`))
         : undefined;
     const copyEntry = models => {
-        const like = likeOllama(models);
+        const like = likeIt(models);
         if (like) models[ref] = structuredClone(models[like]);
     };
     copyEntry(defaults.models);
@@ -293,8 +381,10 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, model, root, pro
 
     const file = path.join(dir, 'openclaw.json');
     fs.writeFileSync(file, JSON.stringify(config, null, 2));
-    const numCtx = Number(entry.params?.num_ctx) > 0 ? Number(entry.params.num_ctx)
-        : Number(entry.contextTokens) > 0 ? Number(entry.contextTokens) : undefined;
+    // An OpenAI server is started with its context; contextTokens is then OpenClaw's budget below it.
+    const numCtx = provider.api === 'openai-completions' ? (Number(entry.contextWindow) > 0 ? Number(entry.contextWindow) : undefined)
+        : Number(entry.params?.num_ctx) > 0 ? Number(entry.params.num_ctx)
+            : Number(entry.contextTokens) > 0 ? Number(entry.contextTokens) : undefined;
     return { file, numCtx, copiedFrom, agentId, workspaceFiles, pluginConfig: plugin.config };
 }
 
@@ -357,7 +447,7 @@ export function failureCodes(log) {
  * One task through OpenClaw. Returns the calls in the record's shape, the final answer and how the session ended,
  * plus the proxy's per-request figures and what the plugin's hooks logged.
  */
-export async function runOpenClaw({ entry, prompt, model, cwd, configFile, workspaceFiles = [], proxy, toolNames, instructionsLine, maxTurns, timeoutMs, thinking }) {
+export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, cwd, configFile, workspaceFiles = [], proxy, toolNames, instructionsLine, maxTurns, timeoutMs, thinking }) {
     proxy.log.length = 0;
     for (const file of workspaceFiles) fs.writeFileSync(path.join(cwd, file.name), file.text);
     // A short name: the run's state folder holds OpenClaw's copy of the plugin, node_modules and all, and a longer
@@ -371,7 +461,7 @@ export async function runOpenClaw({ entry, prompt, model, cwd, configFile, works
     fs.writeFileSync(promptFile, prompt);
     const args = [
         entry, 'agent', 'exec', '--config', configFile, '--cwd', cwd, '--state-dir', stateDir,
-        '--model', `ollama/${model}`, '--message-file', promptFile, '--json',
+        '--model', `${provider}/${model}`, '--message-file', promptFile, '--json',
         '--timeout', String(Math.ceil(timeoutMs / 1000)),
         ...(thinking ? ['--thinking', thinking] : [])
     ];
@@ -434,7 +524,7 @@ export async function runOpenClaw({ entry, prompt, model, cwd, configFile, works
         firstTokenSeconds: e.firstTokenMs === null ? null : e.firstTokenMs / 1000,
         thinkingChars: e.thinking.length,
         thinking: e.thinking,
-        // What the model wrote beside its thinking, as Ollama passed it on: 13 failed runs of eval rounds 40–54 ended on a
+        // What the model wrote beside its thinking, as the server passed it on: 13 failed runs of eval rounds 40–54 ended on a
         // turn with no call, six of them after thinking that planned an editRecord call, and at most ~130 tokens beside it.
         content: e.content.slice(0, 600),
         calls: e.toolCalls.length,

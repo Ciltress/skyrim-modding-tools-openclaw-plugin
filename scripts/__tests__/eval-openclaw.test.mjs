@@ -1,7 +1,8 @@
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { callRecord, failureCodes, writeSessionConfig } from '../eval-openclaw.mjs';
+import { callRecord, failureCodes, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -129,6 +130,89 @@ describe('writeSessionConfig', () => {
         expect(numCtx).toBe(131072);
         expect(written.agents.defaults.model).toEqual({ primary: 'ollama/qwen:9b' });
         expect(written.agents.entries['skyrim-e4b'].model).toEqual({ primary: 'ollama/qwen:9b', fallbacks: [] });
+    });
+
+    it('points an OpenAI provider at the proxy with its own path, and runs at the server\'s window', () => {
+        const strata = userConfig(config => {
+            config.models.providers.strata = {
+                baseUrl: 'http://127.0.0.1:8080/v1', api: 'openai-completions',
+                models: [{ id: 'coder', contextWindow: 131072, contextTokens: 92768 }]
+            };
+            config.agents.entries['skyrim-strata'] = { workspace, model: { primary: 'strata/coder', fallbacks: [] }, models: { 'strata/coder': {} } };
+            return config;
+        });
+        const { written, numCtx } = session(strata, {
+            agent: 'skyrim-strata', provider: 'strata', model: 'coder', proxyUrl: 'http://127.0.0.1:5555/v1'
+        });
+        expect(written.models.providers.strata.baseUrl).toBe('http://127.0.0.1:5555/v1');
+        expect(written.models.providers.ollama.baseUrl).toBe('http://127.0.0.1:11434');
+        expect(written.agents.entries['skyrim-strata'].model).toEqual({ primary: 'strata/coder', fallbacks: [] });
+        expect(numCtx).toBe(131072);
+        expect(() => session(userConfig(), { agent: 'skyrim-e4b', provider: 'strata' })).toThrow(/no provider 'strata'/);
+    });
+});
+
+describe('providerServer', () => {
+    it('takes Ollama at --ollama, and another provider\'s OpenAI server at its baseUrl', () => {
+        const configFile = path.join(dir, 'openclaw.json');
+        fs.writeFileSync(configFile, JSON.stringify({
+            models: { providers: { strata: { api: 'openai-completions', baseUrl: 'http://127.0.0.1:8080/v1' }, other: { api: 'anthropic', baseUrl: 'x' } } }
+        }));
+        expect(providerServer(configFile, 'ollama', 'http://localhost:11434')).toEqual({ api: 'ollama', url: 'http://localhost:11434' });
+        expect(providerServer(configFile, 'strata', 'unused')).toEqual({ api: 'openai-completions', url: 'http://127.0.0.1:8080/v1' });
+        expect(() => providerServer(configFile, 'missing', 'unused')).toThrow(/no provider 'missing'.*strata, other/);
+        expect(() => providerServer(configFile, 'other', 'unused')).toThrow(/openai-completions/);
+    });
+});
+
+describe('startProxy', () => {
+    /** An OpenAI server that streams one answer: thinking, a line of text, a tool call in pieces, then the usage. */
+    async function openAiServer() {
+        const events = [
+            { choices: [{ delta: { role: 'assistant' } }] },
+            { choices: [{ delta: { reasoning_content: 'Read it first.' } }] },
+            { choices: [{ delta: { content: 'Reading.' } }] },
+            { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'readRecord', arguments: '' } }] } }] },
+            { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"record":' } }] } }] },
+            { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"IronSword"}' } }] } }] },
+            { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+            { choices: [], usage: { prompt_tokens: 900, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 600 } } }
+        ];
+        const server = http.createServer((req, res) => {
+            req.resume();
+            req.on('end', () => {
+                res.writeHead(200, { 'content-type': 'text/event-stream' });
+                res.write(': keep-alive\n\n');
+                for (const event of events) res.write(`data: ${JSON.stringify(event)}\n\n`);
+                res.end('data: [DONE]\n\n');
+            });
+        });
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        return server;
+    }
+
+    it('reads an OpenAI stream: the thinking, the text, each tool call whole with its arguments parsed, the tokens', async () => {
+        const server = await openAiServer();
+        const proxy = await startProxy(`http://127.0.0.1:${server.address().port}/v1`, 'openai-completions');
+        try {
+            expect(proxy.baseUrl).toBe(`${proxy.url}/v1`);
+            const response = await fetch(`${proxy.baseUrl}/chat/completions`, {
+                method: 'POST',
+                body: JSON.stringify({ model: 'coder', stream: true, reasoning_effort: 'high', max_tokens: 16384, tools: [{ function: { name: 'readRecord' } }], messages: [] })
+            });
+            await response.text();
+            const [entry] = proxy.log;
+            expect(entry).toMatchObject({
+                url: '/v1/chat/completions', tools: 1, think: 'high', numPredict: 16384,
+                done: true, doneReason: 'tool_calls', thinking: 'Read it first.', content: 'Reading.',
+                promptTokens: 900, cachedTokens: 600, outputTokens: 40
+            });
+            expect(entry.toolCalls).toEqual([{ function: { name: 'readRecord', arguments: { record: 'IronSword' } } }]);
+            expect(entry.firstTokenMs).not.toBeNull();
+        } finally {
+            proxy.close();
+            server.close();
+        }
     });
 });
 

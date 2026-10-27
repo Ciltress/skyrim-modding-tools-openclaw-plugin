@@ -1,7 +1,7 @@
 import { buildJsonPluginConfigSchema, definePluginEntry, type OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry';
 import { resolveStateDir } from 'openclaw/plugin-sdk/state-paths';
 import { createBackend, readConfiguration, stopBackends } from 'skyrim-modding-tools-core';
-import { BuildCheck } from './buildCheck.js';
+import { BuildCheck, filePaths } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
 import { textCallRevision } from './textCalls.js';
@@ -44,12 +44,17 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         }
         return { appendSystemContext: agentInstructions(backend.describe()) };
     });
-    // A record file written where no build reads it is stopped before it lands, with the path in the project. Logged,
-    // so the gateway log shows each.
+    // A record file written where no build reads it goes into its project instead, or, where the guard cannot tell
+    // where, is stopped before it lands, with where it goes. Logged, so the gateway log shows each.
     api.on('before_tool_call', (event, context) => {
-        const block = guard.beforeToolCall(event, context);
-        if (block) api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} stopped — ${block.blockReason}`);
-        return block;
+        const decision = guard.beforeToolCall(event, context);
+        if (decision && 'block' in decision) {
+            api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} stopped — ${decision.blockReason}`);
+        } else if (decision) {
+            api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} placed in its project — ` +
+                filePaths(event.toolName, decision.params).join(', '));
+        }
+        return decision;
     });
     api.on('after_tool_call', (event, context) => {
         check.afterToolCall(event, context);

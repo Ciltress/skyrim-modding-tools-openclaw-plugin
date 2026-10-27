@@ -14,7 +14,8 @@ What the plugin does that an MCP server cannot in OpenClaw:
 - **The skills** ship with the plugin; no `skills.load.extraDirs`.
 - **A build check:** an agent that changed a project and did not build it is asked once more before it answers.
 - **A write guard:** an agent's write or edit of a record file that would land in the projects folder outside every
-  project's plugin folder, where no build reads it, is stopped, with the file's full path in the project.
+  project's plugin folder, where no build reads it, goes to the file's path in its project instead, and the answer
+  names that path. Where the project or the group folder cannot be told, it is stopped, with where the file goes.
 - **A text-call check:** an answer that wrote a tool call as text, which runs nothing, is asked to make the call.
 
 ## Install

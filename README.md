@@ -16,7 +16,10 @@ What the plugin does that an MCP server cannot in OpenClaw:
 - **A write guard:** an agent's write or edit of a record file that would land in the projects folder outside every
   project's plugin folder, where no build reads it, goes to the file's path in its project instead, and the answer
   names that path. Where the project or the group folder cannot be told, it is stopped, with where the file goes.
-- **A text-call check:** an answer that wrote a tool call as text, which runs nothing, is asked to make the call.
+- **A text-call check:** an answer that wrote a tool call as text, which runs nothing, is asked to make the call — one
+  in a call tag (`<tool_call>`, `<call>`, `<tool_code>`) wherever it is; one of the agent's tools written with its
+  arguments (`readSkill{…}`, `openclaw_tool_call{id: "readSkill", …}`, `{"tool_name": "readSkill", …}`) where the
+  answer ends on it, asked for only if it was meant to run.
 
 ## Install
 

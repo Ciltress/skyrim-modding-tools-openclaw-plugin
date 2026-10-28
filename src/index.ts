@@ -62,7 +62,9 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
     });
     api.on('before_agent_finalize', (event, context) => {
         // A call written as text first: it is why nothing was done.
-        const unmade = check.applies(context.agentId) ? textCallRevision(event.lastAssistantMessage, event.runId ?? context.runId) : undefined;
+        const unmade = check.applies(context.agentId)
+            ? textCallRevision(event.lastAssistantMessage, event.runId ?? context.runId, tools.toolNames())
+            : undefined;
         if (unmade) {
             api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to make the call it wrote as text — ${unmade.reason}`);
             return unmade;

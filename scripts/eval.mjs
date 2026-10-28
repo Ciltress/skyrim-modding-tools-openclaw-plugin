@@ -372,9 +372,16 @@ async function effectTexts(project, text) {
     return Promise.all(effectsOf(text).map(effect => recordAnywhere(project, effect)));
 }
 
-/** Built: buildProject succeeded, and the project's build folder holds a plugin. */
+/**
+ * A call that built and succeeded: buildProject, or editRecord sent with `build`, which builds after its change and
+ * answers that build (core v0.1.19, from round 75).
+ */
+const buildSucceeded = c => !c.isError &&
+    (c.name === 'buildProject' || (c.name === 'editRecord' && (c.args?.build === true || String(c.args?.build).trim().toLowerCase() === 'true')));
+
+/** Built: a build succeeded, and the project's build folder holds a plugin. */
 const builtProject = (project, calls) =>
-    calls.some(c => c.name === 'buildProject' && !c.isError) &&
+    calls.some(buildSucceeded) &&
     filesUnder(path.join(projectsDir, project, 'build')).some(f => /\.es[pml]$/i.test(f));
 
 /** A number standing on its own: 7 in "damage 7." but not in "012EB7" or "7.5". */
@@ -438,7 +445,7 @@ const TASKS = [
             return {
                 recordInProject: !!text,
                 weight5: /^\s+Weight:\s*5\s*$/m.test(text),
-                built: built && calls.some(c => c.name === 'buildProject' && !c.isError)
+                built: built && calls.some(buildSucceeded)
             };
         }
     },

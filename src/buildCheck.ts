@@ -32,6 +32,10 @@ const PROJECT_BUILDS = new Set(['buildproject', 'deployproject']);
 const FILE_TOOLS = new Set(['write', 'edit', 'apply_patch']);
 /** A project's folders the build reads: the plugin as text, and the Papyrus sources. */
 const PROJECT_TEXT = new Set(['plugin', 'scripts']);
+/** editRecord's refusal of the build after its change, the change made. */
+const CHANGED_NOT_BUILT = /\bChanged .+ Not built: /s;
+/** true as the tools read it: sent as a boolean, or as text, as small models send an argument now and then. */
+const asTrue = (value: unknown) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
 
 /** At most this many runs are followed at once; the oldest is dropped first. A run normally ends long before. */
 const MAX_RUNS = 200;
@@ -43,7 +47,7 @@ const MAX_RUNS = 200;
  *
  * Only the agents that mod are followed. A project counts as changed after a call that succeeded: addPatch or
  * editRecord with its name, or a file tool writing into its plugin or scripts folder; it counts as built again after a
- * buildProject or deployProject of it that succeeded. Before the run's answer, a project still changed asks the
+ * buildProject, deployProject or editRecord with `build` of it that succeeded. Before the run's answer, a project still changed asks the
  * model, once, to build it. The MCP server's nearest equivalent is its answers' nextStep lines, which say to
  * build next.
  *
@@ -68,13 +72,20 @@ export class BuildCheck {
 
     /** after_tool_call: what the call did to which project. */
     afterToolCall(event: ToolCallFact, context: RunFact): void {
-        if (!this.applies(context.agentId) || event.error) return;
+        if (!this.applies(context.agentId)) return;
         const runId = event.runId ?? context.runId;
         if (!runId) return;
 
         const named = typeof event.params?.project === 'string' ? event.params.project.trim() : '';
         const tool = event.toolName.toLowerCase();
-        if (PROJECT_BUILDS.has(tool)) {
+        // editRecord sent with `build` builds the project after its change (core v0.1.19, from eval round 75): a build when
+        // it succeeded; refused at that build, its message begins "Changed <file>: …" — the change made, not built.
+        const editAndBuild = tool === 'editrecord' && asTrue(event.params?.build);
+        if (event.error) {
+            if (editAndBuild && named && CHANGED_NOT_BUILT.test(event.error)) this.run(runId).set(named.toLowerCase(), named);
+            return;
+        }
+        if (PROJECT_BUILDS.has(tool) || editAndBuild) {
             if (named) this.runs.get(runId)?.delete(named.toLowerCase());
             return;
         }

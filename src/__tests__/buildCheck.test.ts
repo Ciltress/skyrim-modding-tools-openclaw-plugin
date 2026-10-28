@@ -54,6 +54,20 @@ describe('BuildCheck', () => {
         expect(c.beforeFinalize(agent)).toBeDefined();
     });
 
+    it('counts editRecord sent with `build` as a build — but refused at that build, as a change not built', () => {
+        // The rename warning's call builds since core v0.1.19: made with no build after it, it left the plugin unchanged
+        // twice in eval round 75.
+        const c = check();
+        c.afterToolCall(call('editrecord', { project: 'FlameBlade', record: 'x.yaml' }), agent);
+        c.afterToolCall(call('editrecord', { project: 'FlameBlade', record: 'x.yaml', build: true }), agent);
+        expect(c.beforeFinalize(agent)).toBeUndefined();
+        c.afterToolCall(call('editrecord', { project: 'FlameBlade', record: 'x.yaml', build: 'true' },
+            { error: 'Changed C:\\p\\FlameBlade\\plugin\\x.yaml: set EditorID: IronSword → FlameBlade. Not built: 1 field(s) …' }), agent);
+        expect(c.beforeFinalize(agent)!.reason).toBe('Changed and not built since: FlameBlade.');
+        c.afterToolCall(call('editrecord', { project: 'StormBolt', record: 'x.yaml', build: true }, { error: 'No record file \'x.yaml\' …' }), agent);
+        expect(c.beforeFinalize(agent)!.reason).toBe('Changed and not built since: FlameBlade.');
+    });
+
     it('counts a file written into a project\'s plugin or scripts, relative or absolute, and nothing else', () => {
         const c = check();
         c.afterToolCall(call('write', { path: 'FlameBlade/plugin/Weapons/FlameBlade.yaml', content: '' }), agent);

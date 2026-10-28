@@ -26,7 +26,8 @@
  *
  * --detailed runs each authoring task again as `<task>+detailed`, with a prompt that spells out what a player who
  * knows the game would ask for — stats, the vanilla thing it is like, the level — but no editor IDs; the checks stay
- * the same, so the two compare.
+ * the same, so the two compare. sword+detailed is held, beside them, to the enchantment its prompt names: a new record
+ * of the project, Flame Blade Burn, of 10 points (since round 78).
  *
  * Nothing is deployed and nothing is installed: the tools that would are denied. The plugin's projects folder is a
  * temporary one, emptied before each run; the instance is only read.
@@ -379,6 +380,35 @@ async function effectTexts(project, text) {
 const buildSucceeded = c => !c.isError &&
     (c.name === 'buildProject' || (c.name === 'editRecord' && (c.args?.build === true || String(c.args?.build).trim().toLowerCase() === 'true')));
 
+/** A magic effect a fire resistance lowers: fire damage. */
+const FIRE = /^ResistValue:[ \t]*ResistFire[ \t]*\r?$/m;
+
+/** Each item of a record's Effects list: the magic effect it names, and its Magnitude (NaN where it has none). */
+function effectItems(text) {
+    const list = /^Effects:[ \t]*\r?\n((?:[ \t]*-.*\r?\n|[ \t]+.*\r?\n)*)/m.exec(`${text}\n`)?.[1] ?? '';
+    const indent = /^([ \t]*)-/.exec(list)?.[1] ?? '';
+    return list.split(new RegExp(`^${indent}-`, 'm')).slice(1)
+        .map(item => ({ effect: /BaseEffect:[ \t]*([^\s#]+)/.exec(item)?.[1], magnitude: Number(/Magnitude:[ \t]*(-?[\d.]+)/.exec(item)?.[1]) }))
+        .filter(item => item.effect);
+}
+
+/**
+ * The sword task's records: the project's new sword named Flame Blade; the enchantment it names — its `formKey` where
+ * the project has that record, its `text` wherever it is; that enchantment's magic effects, as text; and its Effects
+ * items, each with its magic effect's text and its magnitude.
+ */
+async function flameBlade() {
+    const sword = newRecords('FlameBlade', 'weapons').find(r => /^flame blade$/i.test(nameOf(r.text)));
+    const link = sword && /^ObjectEffect:[ \t]*([^\s#]+)/m.exec(sword.text)?.[1];
+    if (!link) return { sword, effects: [], items: [] };
+    const formKey = await linkTarget('FlameBlade', link);
+    const own = formKey && projectRecords('FlameBlade').records.find(r => r.formKey?.toLowerCase() === formKey.toLowerCase());
+    const text = await recordAnywhere('FlameBlade', link);
+    const items = await Promise.all(effectItems(text).map(async ({ effect, magnitude }) =>
+        ({ text: await recordAnywhere('FlameBlade', effect), magnitude })));
+    return { sword, enchantment: { formKey: own ? formKey : undefined, text }, effects: await effectTexts('FlameBlade', text), items };
+}
+
 /** Built: a build succeeded, and the project's build folder holds a plugin. */
 const builtProject = (project, calls) =>
     calls.some(buildSucceeded) &&
@@ -460,9 +490,7 @@ const TASKS = [
             'it a new enchantment of its own, named "Flame Blade Burn", that deals 10 points of fire damage to whatever it ' +
             'hits, with a charge of 500. Build it, but do not deploy it.',
         check: async ({ calls }) => {
-            const sword = newRecords('FlameBlade', 'weapons').find(r => /^flame blade$/i.test(nameOf(r.text)));
-            const enchantment = sword && /^ObjectEffect:[ \t]*([^\s#]+)/m.exec(sword.text)?.[1];
-            const effects = enchantment ? await effectTexts('FlameBlade', await recordAnywhere('FlameBlade', enchantment)) : [];
+            const { sword, effects } = await flameBlade();
             return {
                 newSword: !!sword,
                 // The sword keyword by its FormID, or by its editor ID, which the build keeps in the file since round 48.
@@ -471,8 +499,21 @@ const TASKS = [
                 // A sword the player can carry: copied from the Bound Sword, 10 of rounds 31–44 kept its
                 // NonPlayable and BoundWeapon flags — a conjured weapon, kept out of the inventory — and 9 passed without this.
                 playable: !!sword && !/^[ \t]+-[ \t]*(?:NonPlayable|BoundWeapon)[ \t]*\r?$|^[ \t]*Flags:[ \t]*\[[^\]\r\n]*\b(?:NonPlayable|BoundWeapon)\b/m.test(sword.text),
-                fireEnchantment: effects.some(text => /^ResistValue:[ \t]*ResistFire[ \t]*\r?$/m.test(text)),
+                fireEnchantment: effects.some(text => FIRE.test(text)),
                 built: builtProject('FlameBlade', calls)
+            };
+        },
+        // The enchantment the detailed prompt names, beside those: round 76's sword+detailed #3 made its copy of the game's
+        // new and left the sword naming the game's by editor ID — the Fire Damage of 5 points — and passed, the game's
+        // enchantment burning too.
+        detailedCheck: async ({ calls }) => {
+            const { enchantment, items } = await flameBlade();
+            const { plugin } = projectRecords('FlameBlade');
+            return {
+                ...await TASKS.find(t => t.id === 'sword').check({ calls }),
+                ownEnchantment: !!enchantment?.formKey && !!plugin && enchantment.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`),
+                enchantmentNamed: !!enchantment && /^flame blade burn$/i.test(nameOf(enchantment.text)),
+                tenPoints: items.some(({ text, magnitude }) => FIRE.test(text) && magnitude === 10)
             };
         }
     },
@@ -575,7 +616,7 @@ const unknownTasks = wanted.filter(id => !TASKS.some(t => t.id === id));
 if (unknownTasks.length) fail(`unknown task(s) ${unknownTasks.join(', ')}; the tasks are ${TASKS.map(t => t.id).join(', ')}.`);
 const tasks = TASKS.filter(t => wanted.includes(t.id)).flatMap(t => [
     t,
-    ...opt.detailed && t.detailed ? [{ ...t, id: `${t.id}+detailed`, prompt: t.detailed }] : []
+    ...opt.detailed && t.detailed ? [{ ...t, id: `${t.id}+detailed`, prompt: t.detailed, check: t.detailedCheck ?? t.check }] : []
 ]);
 
 // --- A run --------------------------------------------------------------------------------------

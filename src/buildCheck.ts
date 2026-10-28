@@ -38,7 +38,7 @@ const MAX_RUNS = 200;
 
 /**
  * Which projects a run changed and did not build since, so that the run is not answered as done while the plugin
- * does not have the change: 10 of the 13 e4b runs of eval rounds 31–47 that ended on a refused build told the
+ * does not have the change: 10 of the 13 runs of eval rounds 31–47 that ended on a refused build told the
  * user the mod was built, and round 63's npc #5 answered "built" after an editRecord it never built.
  *
  * Only the agents that mod are followed. A project counts as changed after a call that succeeded: addPatch or

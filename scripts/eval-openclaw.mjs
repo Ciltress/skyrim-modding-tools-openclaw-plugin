@@ -1,6 +1,6 @@
 /**
  * The eval's client: OpenClaw itself, headless (`openclaw agent exec`), with the model served by Ollama, or by a server
- * with OpenAI's API that the user's configuration names as an `openai-completions` provider (Strata) — the way a user
+ * with OpenAI's API that the user's configuration names as an `openai-completions` provider (a llama.cpp server) — the way a user
  * of OpenClaw with a local model drives this plugin. Used by eval.mjs.
  *
  * The session is the user's own OpenClaw configuration (`~/.openclaw/openclaw.json`, or --openclaw-config), changed
@@ -235,7 +235,7 @@ export async function startProxy(server, api = 'ollama') {
                 if (!res.headersSent) res.writeHead(502);
                 res.end();
             });
-            // Given up on, the request is ended at the server too: left open, bonsai's looping turn went on 36 minutes after
+            // Given up on, the request is ended at the server too: left open, a model's looping turn went on 36 minutes after
             // its run timed out at 20, and the next run's first turn waited 17 of them (eval round 33).
             res.on('close', () => {
                 if (res.writableEnded) return;

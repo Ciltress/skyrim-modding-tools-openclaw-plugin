@@ -36,11 +36,11 @@ const MAX_RUNS = 200;
  * named no project, a file with no group folder, an edit of a file only outside the project — it stops, naming where
  * the file goes.
  *
- * A file tool takes a relative path from the agent's folder, the projects folder, and e4b writes record files by their
+ * A file tool takes a relative path from the agent's folder, the projects folder, and the model writes record files by their
  * path in the plugin folder, as the build's answers name them: `Books/MavenWarning.yaml` landed outside every project
  * in 5 to 6 of 40 authoring runs a round (eval rounds 64–68). After a refusal it wrote its fixes there 6 times while
  * the build read the copy in the project, unchanged, and told the user the note was built (round 68's
- * note+detailed #1). Stopped with the path in the project, e4b wrote there next in most runs (rounds 69–71), but round
+ * note+detailed #1). Stopped with the path in the project, the model wrote there next in most runs (rounds 69–71), but round
  * 71's note+detailed #5 sent the same write three times and OpenClaw ended the run: what the guard can place, it places.
  *
  * The project is the folder the path names when it is one, or else the one the run's last call of a plugin tool

@@ -25,7 +25,7 @@ afterEach(() => { fs.rmSync(projects, { recursive: true, force: true }); });
 
 describe('WriteGuard', () => {
     it('writes a record file sent from the projects folder into the run\'s project, at its path there', () => {
-        // Eval round 68's note+detailed #1: the build named the file by its path in the plugin folder, and e4b wrote its
+        // Eval round 68's note+detailed #1: the build named the file by its path in the plugin folder, and the model wrote its
         // fixes there, from the projects folder, 6 times. Round 71's note+detailed #5, stopped with the path in the
         // project, sent the same write three times, and OpenClaw ended the run.
         project('MavenNote');

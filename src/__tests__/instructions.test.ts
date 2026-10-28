@@ -21,13 +21,13 @@ describe('the modding agents\' instructions', () => {
     });
 
     it('tell the agent to write a whole record anew, and to edit only a few lines', () => {
-        // Rounds 31–58: 16 of e4b's failed runs ended on an `edit` call that Ollama dropped unparsed — its `edits` list
+        // Rounds 31–58: 16 of the failed runs ended on an `edit` call that Ollama dropped unparsed — its `edits` list
         // never closed, its texts mostly whole record files (ollama/ollama#19273). Its writes were dropped once.
         expect(own).toContain('- A whole record, or a file changed in many places, you `write` anew; `edit` is for a few lines.');
     });
 
     it('tell the agent that an edit\'s old text holds real line breaks, and to read the file when an edit is refused', () => {
-        // Round 29: e4b sent `oldText: "FormKey: 012EB7:Skyrim.esm\\n"` six times, the edit tool's "escaping differs"
+        // Round 29: the model sent `oldText: "FormKey: 012EB7:Skyrim.esm\\n"` six times, the edit tool's "escaping differs"
         // hint notwithstanding, and spent the run's last turns on edits of lines it had changed already.
         expect(own).toContain('real line breaks — never `\\n` typed');
         expect(own).toMatch(/`edit` refused: `read` the file/);

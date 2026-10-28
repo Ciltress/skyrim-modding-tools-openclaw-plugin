@@ -6,15 +6,15 @@
  * and agent: its system prompt with the plugin's instructions, its tools, Tool Search, its thinking level and context.
  *
  *   npm run build
- *   node scripts/eval.mjs --openclaw-agent skyrim-e4b [--model gemma4:e4b] [--profile all] [--runs 3]
+ *   node scripts/eval.mjs --openclaw-agent <agent> [--model <model>] [--profile all] [--runs 3]
  *                         [--authoring-runs 5] [--tasks find,read] [--max-turns 25] [--think true|false|<level>]
  *                         [--detailed] [--out <file>] [--ollama http://localhost:11434] [--settle 60]
  *                         [--provider ollama|<provider>] [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
  *
  * The agent is --openclaw-agent, else the plugin's only modding agent, else the configuration's only agent.
  * --provider names the model's provider in OpenClaw's configuration: `ollama` (the default) is Ollama at --ollama;
- * another is a server with OpenAI's API, an `openai-completions` provider (Strata: --provider strata --model
- * <the model id it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
+ * another is a server with OpenAI's API, an `openai-completions` provider (--provider <its id> --model <the model id
+ * it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
  * loads nothing, and the speed is the server's own timings, when it gives them.
  * --authoring-runs sets the runs of the tasks that write records (sword, spell, npc, note, and their `+detailed`
  * runs), --runs those of the others; it defaults to --runs. Every miss of rounds 24–31 was an authoring task's, and
@@ -245,7 +245,7 @@ async function weapon(editorId) {
     return { formId: read.formId, editorId, damage: stat(yaml, 'Damage'), weight: stat(yaml, 'Weight') };
 }
 
-// Read before the first task: a commit made while the round runs is not the build it measured (round 32's e4b row named
+// Read before the first task: a commit made while the round runs is not the build it measured (round 32's first row named
 // the commit made during its last task).
 const BUILD = measuredBuild();
 console.log(`eval: ${opt.model} @ num_ctx ${CTX ?? 'Ollama default'}, profile ${opt.profile}, ${RUNS} run(s) per task` +
@@ -461,7 +461,7 @@ const TASKS = [
                 // The sword keyword by its FormID, or by its editor ID, which the build keeps in the file since round 48.
                 oneHandedSword: !!sword && (/AnimationType:[ \t]*OneHandSword/.test(sword.text) || sword.text.includes('01E711:Skyrim.esm')
                     || /^[ \t]*-[ \t]*WeapTypeSword[ \t]*(?:#.*)?\r?$/m.test(sword.text)),
-                // A sword the player can carry: copied from the Bound Sword, 10 of e4b's of rounds 31–44 kept its
+                // A sword the player can carry: copied from the Bound Sword, 10 of rounds 31–44 kept its
                 // NonPlayable and BoundWeapon flags — a conjured weapon, kept out of the inventory — and 9 passed without this.
                 playable: !!sword && !/^[ \t]+-[ \t]*(?:NonPlayable|BoundWeapon)[ \t]*\r?$|^[ \t]*Flags:[ \t]*\[[^\]\r\n]*\b(?:NonPlayable|BoundWeapon)\b/m.test(sword.text),
                 fireEnchantment: effects.some(text => /^ResistValue:[ \t]*ResistFire[ \t]*\r?$/m.test(text)),
@@ -596,7 +596,7 @@ async function resultOf(task, run, { answer, calls, stop, turns, started, client
         : {};
     // Every task that leaves record files is held to them having no escapes a copy should have decoded.
     const escapes = leftEscapes();
-    // And to keeping no copy of a record that changes nothing: 6 of e4b's sword runs of rounds 33–43 passed with the Iron
+    // And to keeping no copy of a record that changes nothing: 6 of the sword runs of rounds 33–43 passed with the Iron
     // Sword or a fire enchantment copied with addPatch and built into the plugin untouched, beside the new sword.
     const copies = Object.keys(checks).length ? await unchangedCopies() : [];
     if (Object.keys(checks).length && filesUnder(projectsDir).some(file => file.endsWith('.yaml'))) {
@@ -705,7 +705,7 @@ const loaded = OPENAI ? { models: [] } : await ollama('/api/ps').catch(() => ({ 
  * from the tasks, whose turns reuse Ollama's prompt cache and answer in a few dozen tokens — figures
  * taken from them would not compare between rounds. A fresh first line keeps the cache out of it here.
  * The reference is the core's, rendered as the MCP server's docs/Tool-Reference.md is, which rounds up to 63 read.
- * An OpenAI server is timed by the llama.cpp `timings` of its answer (Strata's too); one without them is not measured.
+ * An OpenAI server is timed by the llama.cpp `timings` of its answer; one without them is not measured.
  */
 async function measureSpeed() {
     const doc = renderToolReference(collectToolFamilies(product));
@@ -764,7 +764,7 @@ const laterTurns = allTurns.slice(1);
 /**
  * OpenClaw's side of a run: what its first prompt carried — its tools, how many the plugin's, whether Tool Search was
  * on, whether the plugin's instructions were in it, the thinking, context and answer cap it asked for — answers that
- * did not end, turns Ollama ended at the cap or the context's end (12b looped ~111,000 tokens until the context was
+ * did not end, turns Ollama ended at the cap or the context's end (a model looped ~111,000 tokens until the context was
  * full, twice in round 21 and once in round 22), and what the plugin's build check asked.
  */
 const openClawSummary = (() => {
@@ -838,7 +838,7 @@ console.log('');
 console.table(report.summary);
 const passed = results.filter(r => r.success).length;
 console.log(`eval: ${passed}/${results.length} passed. Full record: ${outFile}`);
-// A ratio rather than sizes: for gemma4, Ollama 0.40 reports sizes a tenth of the real ones.
+// A ratio rather than sizes: for some models, Ollama 0.40 reports sizes a tenth of the real ones.
 const onGpu = report.ollama ? `${Math.round((report.ollama.size_vram ?? 0) / (report.ollama.size || 1) * 100)}%` : '?';
 if (report.ollama) console.log(`eval: Ollama ran it with context ${report.ollama.context_length ?? '?'}, ${onGpu} on the GPU`);
 const rate = value => value === undefined ? '?' : `~${value.toLocaleString('en-US')} tokens/s`;

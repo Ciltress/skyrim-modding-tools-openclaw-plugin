@@ -16,7 +16,7 @@ describe('textCallRevision', () => {
         expect(revision.retry).toMatchObject({ idempotencyKey: 'skyrim-modding-tools:text-call:run-1', maxAttempts: 1 });
     });
 
-    it('reads the call form of gemma4\'s tokens, and a name with no arguments', () => {
+    it('reads the call form of a model\'s tool-call tokens, and a name with no arguments', () => {
         expect(textCallRevision('<|tool_call>call:buildProject{project:<|"|>FlameBlade<|"|>}<tool_call|>', 'r')!.reason)
             .toBe('The answer wrote a tool call as text: buildProject{project:<|"|>FlameBlade<|"|>}.');
         expect(textCallRevision('<tool_call>healthcheck</tool_call>', 'r')!.reason).toBe('The answer wrote a tool call as text: healthcheck.');

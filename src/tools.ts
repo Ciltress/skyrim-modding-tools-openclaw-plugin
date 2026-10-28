@@ -41,7 +41,7 @@ const OPERATOR_HINT = Symbol.for('openclaw.toolOperatorHint');
 /**
  * What a failed call answers the model: the core's message as plain text, which OpenClaw writes into its own JSON —
  * `[tool error] {"status": "error", "tool": "buildproject", "error": "Not built: …"}`. Sent as the MCP server's
- * `{"error", "code"}` JSON, it was a text inside that JSON, each backslash of a path written four times, and e4b left two
+ * `{"error", "code"}` JSON, it was a text inside that JSON, each backslash of a path written four times, and the model left two
  * records outside their project though the refusal named each one's place (eval round 65's spell #5 and npc #4).
  */
 export function failureText(error: unknown): string {

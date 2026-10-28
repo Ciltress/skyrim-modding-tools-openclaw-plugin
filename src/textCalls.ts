@@ -2,14 +2,14 @@ import type { FinalizeRevision } from './buildCheck.js';
 
 /**
  * A tool call written in an answer's text — `<tool_call>readSkill{skill:skyrim-modding-basics}</tool_call>`, or the
- * `call:` form gemma4's own tokens wrap — its name, and its arguments where written in braces.
+ * `call:` form a model's own tool-call tokens wrap — its name, and its arguments where written in braces.
  */
 const TEXT_CALL = /<\|?tool_call\|?>\s*(?:call:)?([A-Za-z_][\w-]*)\s*(\{[^\n]*?\})?/;
 
 /**
- * One more pass for an answer that ends on a tool call written as text, which runs nothing: e4b's first turn in eval
+ * One more pass for an answer that ends on a tool call written as text, which runs nothing: the model's first turn in eval
  * round 69's npc #1 wrote `<tool_call>readSkill{skill:skyrim-modding-basics}</tool_call>` as plain words, not the
- * tokens Ollama's gemma4 parser reads as a call, and the run ended there with nothing made.
+ * tokens Ollama's tool-call parser reads as a call, and the run ended there with nothing made.
  *
  * OpenClaw makes the pass only in a run with no call it cannot replay (see BuildCheck) — so for a text call in the
  * run's first answer, as that one was; after a plugin call or a write it logs the request and lets the answer stand.

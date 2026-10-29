@@ -835,7 +835,8 @@ const openClawSummary = (() => {
         sideRequests: results.reduce((total, r) => total + (r.client?.sideRequests.length ?? 0), 0),
         buildCheckAsked: results.filter(r => r.client?.buildCheckAsked > 0).length,
         buildCheckDropped: sum('buildCheckDropped'),
-        textCallAsked: results.filter(r => r.client?.textCallAsked > 0).length
+        textCallAsked: results.filter(r => r.client?.textCallAsked > 0).length,
+        announcedAsked: results.filter(r => r.client?.announcedAsked > 0).length
     };
 })();
 const first = openClawSummary.firstPrompt;
@@ -908,7 +909,8 @@ const entry = [
     `first token after ${openClawSummary.medianFirstTokenSeconds ?? '?'} s (median of the first turns), ` +
     `${openClawSummary.cutAnswers} answers cut off, ${openClawSummary.lengthStops} turns ended at the length limit, ` +
     `${openClawSummary.sideRequests} side requests; the build check asked for a build in ${openClawSummary.buildCheckAsked} ` +
-    `runs, the text-call check asked for a call in ${openClawSummary.textCallAsked}, and OpenClaw dropped ` +
+    `runs, the text-call check asked for a call in ${openClawSummary.textCallAsked}, the announced-step check for its step ` +
+    `in ${openClawSummary.announcedAsked}, and OpenClaw dropped ` +
     `${openClawSummary.buildCheckDropped} of those passes.`,
     '',
     '| task | passed | turns | calls | invalid arguments | other errors | largest prompt (tokens) | seconds |',

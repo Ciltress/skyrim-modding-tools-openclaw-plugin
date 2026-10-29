@@ -562,6 +562,8 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
             buildCheckDropped: (log.match(/before_agent_finalize requested revision after potential side effects/g) ?? []).length,
             // Its text-call check: an answer that wrote a tool call as text, asked to make it (a dropped pass counts above).
             textCallAsked: (log.match(/asked to make the call it wrote as text/g) ?? []).length,
+            // And its announced-step check: an answer that said what it was about to do, in a run with no call, asked to do it.
+            announcedAsked: (log.match(/asked to take the step it announced/g) ?? []).length,
             toolSummary: envelope?.toolSummary ?? null,
             ...(stop.startsWith('clientError') ? { error: envelope?.error ?? null } : {}),
             stderr: log.split('\n')

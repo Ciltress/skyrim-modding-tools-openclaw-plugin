@@ -59,6 +59,8 @@ const MAX_RUNS = 200;
  */
 export class BuildCheck {
     private readonly runs = new Map<string, Map<string, string>>();
+    /** The runs that made a call of any tool, failed or not. */
+    private readonly calling = new Set<string>();
 
     /**
      * @param projectsDir The projects folder. A relative file path is taken from it: the modding agents work there.
@@ -75,6 +77,10 @@ export class BuildCheck {
         if (!this.applies(context.agentId)) return;
         const runId = event.runId ?? context.runId;
         if (!runId) return;
+        if (!this.calling.has(runId)) {
+            if (this.calling.size >= MAX_RUNS) this.calling.delete(this.calling.values().next().value!);
+            this.calling.add(runId);
+        }
 
         const named = typeof event.params?.project === 'string' ? event.params.project.trim() : '';
         const tool = event.toolName.toLowerCase();
@@ -119,9 +125,16 @@ export class BuildCheck {
         };
     }
 
+    /** Whether the run made a call of any tool so far — after which OpenClaw makes no finalize pass, if it could not replay it. */
+    madeCalls(runId: string | undefined): boolean {
+        return !!runId && this.calling.has(runId);
+    }
+
     /** agent_end: the run is over. */
     end(runId: string | undefined): void {
-        if (runId) this.runs.delete(runId);
+        if (!runId) return;
+        this.runs.delete(runId);
+        this.calling.delete(runId);
     }
 
     private run(runId: string): Map<string, string> {

@@ -91,6 +91,19 @@ describe('BuildCheck', () => {
         c.end('run-1');
         expect(c.beforeFinalize(agent)).toBeUndefined();
     });
+
+    it('knows whether a run made a call of any tool, a refused one too, until it ends', () => {
+        const c = check();
+        expect(c.madeCalls('run-1')).toBe(false);
+        c.afterToolCall(call('readSkill', { skill: 'skyrim-modding-basics' }, { error: 'unknown skill' }), agent);
+        expect(c.madeCalls('run-1')).toBe(true);
+        expect(c.madeCalls('run-2')).toBe(false);
+        expect(c.madeCalls(undefined)).toBe(false);
+        c.end('run-1');
+        expect(c.madeCalls('run-1')).toBe(false);
+        c.afterToolCall(call('read', { path: 'AGENTS.md' }), { agentId: 'swift', runId: 'run-1' });
+        expect(c.madeCalls('run-1')).toBe(false);
+    });
 });
 
 describe('filePaths', () => {

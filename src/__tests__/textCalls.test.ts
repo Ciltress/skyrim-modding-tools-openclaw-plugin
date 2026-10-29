@@ -1,6 +1,6 @@
-import { textCallRevision } from '../textCalls.js';
+import { announcedStep, announcedStepRevision, textCallRevision } from '../textCalls.js';
 
-/** The pass asked for an answer that wrote a tool call as text. */
+/** The passes asked for an answer that wrote a tool call as text, or announced a step and made no call. */
 
 const TOOLS = ['readSkill', 'newProject', 'editRecord', 'buildProject', 'deployProject', 'healthcheck'];
 
@@ -61,5 +61,46 @@ describe('textCallRevision', () => {
         expect(textCallRevision('Built FlameBlade.esp: C:\\projects\\FlameBlade\\build\\FlameBlade.esp. Nothing is left to do.', 'r', TOOLS)).toBeUndefined();
         expect(textCallRevision(undefined, 'r', TOOLS)).toBeUndefined();
         expect(textCallRevision('<tool_call>readSkill{}</tool_call>', undefined, TOOLS)).toBeUndefined();
+    });
+});
+
+describe('announcedStepRevision', () => {
+    it('asks for the step an answer announced, once per run', () => {
+        // Eval round 79's npc #1, the whole answer.
+        const answer = '[[reply_to_current]]I will start by reading the essential modding guides, specifically for general modding ' +
+            'basics and then for creating NPCs, to ensure I follow all conventions before starting the project.\n\n' +
+            'First, I am reading the Skyrim Modding Basics skill.\n';
+
+        const revision = announcedStepRevision(answer, 'run-1')!;
+
+        expect(revision.action).toBe('revise');
+        expect(revision.reason).toBe('The answer announced a step and made no call: First, I am reading the Skyrim Modding Basics skill.');
+        expect(revision.retry.instruction).toContain('— "First, I am reading the Skyrim Modding Basics skill." — but no tool call came with it');
+        expect(revision.retry.instruction).toMatch(/If you meant to do it now, make the call, then go on with the task; if you were answering the user, answer as you did\.$/);
+        expect(revision.retry).toMatchObject({ idempotencyKey: 'skyrim-modding-tools:announced-step:run-1', maxAttempts: 1 });
+    });
+
+    it('reads the ways a step is announced', () => {
+        for (const step of ['I will create the project HildaTheNord now.', 'I\'ll read the NPC skill first:', 'Now I\'m reading the basics.',
+            'Let me look up a vanilla Nord woman.', 'Let\'s start with reading the skills.', 'Okay, I am going to build it.',
+            'The skills come first. **Next, I will read them.**']) {
+            expect(announcedStep(step)).toBeDefined();
+        }
+    });
+
+    it('leaves an answer that ends otherwise: done, waiting for the user, or asking them', () => {
+        for (const answer of [
+            'The mod is built and ready. Let me know if you would like to deploy it.',
+            'The project is built. I will wait for your go before deploying it.',
+            '**Next Step:** I am awaiting your instruction to deploy the mod.',
+            'Built HildaTheNord.esp. Shall I deploy it? I\'ll be glad to.',
+            'Should I deploy it now? I will need your word first?',
+            'A FormID is a record\'s number in the load order.',
+            'I made Hilda, a female Nord, and built the project.'
+        ]) {
+            expect(announcedStep(answer)).toBeUndefined();
+        }
+        expect(announcedStepRevision(undefined, 'r')).toBeUndefined();
+        expect(announcedStepRevision('I will read the skill.', undefined)).toBeUndefined();
     });
 });

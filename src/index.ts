@@ -4,7 +4,7 @@ import { createBackend, readConfiguration, stopBackends } from 'skyrim-modding-t
 import { BuildCheck, filePaths } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
-import { textCallRevision } from './textCalls.js';
+import { announcedStepRevision, textCallRevision } from './textCalls.js';
 import { SkyrimTools } from './tools.js';
 import { WriteGuard } from './writeGuard.js';
 
@@ -68,6 +68,14 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         if (unmade) {
             api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to make the call it wrote as text — ${unmade.reason}`);
             return unmade;
+        }
+        // Then a step announced with no call, in a run that made none: nothing was done either.
+        const announced = check.applies(context.agentId) && !check.madeCalls(event.runId ?? context.runId)
+            ? announcedStepRevision(event.lastAssistantMessage, event.runId ?? context.runId)
+            : undefined;
+        if (announced) {
+            api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to take the step it announced — ${announced.reason}`);
+            return announced;
         }
         const revision = check.beforeFinalize(context, event.runId ?? context.runId);
         if (revision) api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to build before answering — ${revision.reason}`);

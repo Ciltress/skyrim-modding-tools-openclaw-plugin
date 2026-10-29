@@ -12,6 +12,15 @@ const NAME_KEYS = 'tool_name|tool|name|function|function_name|id';
 const AFTER_CALL = /^(?:\s|<\/?\|?[\w-]+\|?>|```|\))*$/;
 /** OpenClaw's Tool Search tools, by which a model calls a tool the catalog keeps: `openclaw_tool_call{id: "readSkill", …}`. */
 const OPENCLAW_TOOLS = ['openclaw_tool_call', 'tool_search', 'tool_describe'];
+/**
+ * A step said in the first person as about to be taken, after a word and a comma, or a first, now or next, at most:
+ * "First, I am reading …", "Now I'm reading …", "I will start by …", "Let me check …" — not "Let me know …",
+ * "I will wait …", "I'll be glad to …", "I am awaiting …".
+ */
+const ANNOUNCED = new RegExp(String.raw`^(?:\w+,\s*|(?:first|now|next|then)\s+)?(?:` +
+    String.raw`I(?: will|['’]ll| am going to|['’]m going to| shall)\s+(?!be\b|need\b|wait\b|let\b)` +
+    String.raw`|I(?: am|['’]m)\s+(?:now\s+)?(?!(?:a)?waiting\b)\w+ing\b` +
+    String.raw`|Let(?:['’]s| me| us)\s+(?!know\b))`, 'i');
 
 /** A tool call found written in an answer's text, and whether a call tag wrapped it. */
 interface WrittenCall {
@@ -51,6 +60,39 @@ export function textCallRevision(lastAssistantMessage: string | undefined, runId
             maxAttempts: 1
         }
     };
+}
+
+/**
+ * One more pass for a run's answer that says what it is about to do and does nothing: eval round 79's npc #1 answered
+ * "I will start by reading the essential modding guides … First, I am reading the Skyrim Modding Basics skill." with no
+ * call in the turn, and the run ended there — its thinking had planned readSkill, and Ollama dropped no call. It is asked
+ * as a step meant to be taken, so an answer that tells the user what comes next can stand.
+ *
+ * The caller asks it only in a run that made no call yet: OpenClaw makes the pass there (see BuildCheck), and an answer
+ * that ends announcing a step after the work is done tells the user what they may ask for next.
+ */
+export function announcedStepRevision(lastAssistantMessage: string | undefined, runId: string | undefined): FinalizeRevision | undefined {
+    const step = runId && lastAssistantMessage ? announcedStep(lastAssistantMessage) : undefined;
+    if (!step) return undefined;
+    return {
+        action: 'revise',
+        reason: `The answer announced a step and made no call: ${step}`,
+        retry: {
+            instruction:
+                `Your last message says what you are about to do — "${step}" — but no tool call came with it, so nothing was ` +
+                'done. If you meant to do it now, make the call, then go on with the task; if you were answering the user, ' +
+                'answer as you did.',
+            idempotencyKey: `skyrim-modding-tools:announced-step:${runId}`,
+            maxAttempts: 1
+        }
+    };
+}
+
+/** The answer's last sentence where it announces a step about to be taken; a question to the user is none. */
+export function announcedStep(text: string): string | undefined {
+    const line = text.replace(/\[\[[\w-]+\]\]/g, '').split('\n').map(l => l.replace(/[*_`]/g, '').trim()).filter(Boolean).at(-1);
+    const sentence = line?.split(/(?<=[.!?])\s+/).at(-1);
+    return sentence && !sentence.endsWith('?') && ANNOUNCED.test(sentence) ? sentence : undefined;
 }
 
 /** The first call written in a call tag; else the last of the agent's tools written as a call, where the answer ends on it. */

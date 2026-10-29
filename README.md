@@ -20,6 +20,9 @@ What the plugin does that an MCP server cannot in OpenClaw:
   in a call tag (`<tool_call>`, `<call>`, `<tool_code>`) wherever it is; one of the agent's tools written with its
   arguments (`readSkill{…}`, `openclaw_tool_call{id: "readSkill", …}`, `{"tool_name": "readSkill", …}`) where the
   answer ends on it, asked for only if it was meant to run.
+- **An announced-step check:** in a run that made no call yet, an answer that ends saying what it is about to do
+  ("First, I am reading the basics skill.", "Let me check …" — not "Let me know …") and does nothing is asked to take
+  that step, if it was meant to be taken now.
 
 ## Install
 

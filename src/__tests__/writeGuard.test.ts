@@ -118,6 +118,33 @@ describe('WriteGuard', () => {
         g.end('run-1');
         expect(blockReason(g.beforeToolCall(call('write', { path: 'Books/MavenWarning.yaml' }), agent))).toContain('<project>');
     });
+
+    it('keeps the FormKey a build gave a record file when a write of the same record leaves it out', () => {
+        // Eval round 84's npc #2 wrote its NPC again as the build had corrected it, without the FormKey line the build gave it,
+        // and built no more: the text held a record not yet numbered beside the plugin built from it.
+        project('HildaTheNord');
+        const file = path.join(projects, 'HildaTheNord', 'plugin', 'Npcs', 'Hilda.yaml');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, 'FormKey: 000800:HildaTheNord.esp\nEditorID: Hilda\nRace: NordRace\n');
+        const g = guard();
+        g.afterToolCall(call('buildProject', { project: 'HildaTheNord' }), agent);
+        const rewritten = 'EditorID: Hilda\nRace: NordRace\nVoice: FemaleNord\n';
+
+        expect(g.beforeToolCall(call('write', { path: file, content: rewritten }), agent))
+            .toEqual({ params: { content: `FormKey: 000800:HildaTheNord.esp\n${rewritten}` } });
+        // Placed and kept at once: the path in the plugin folder alone.
+        expect(g.beforeToolCall(call('write', { path: 'Npcs/Hilda.yaml', content: rewritten.replace(/\n/g, '\r\n') }), agent))
+            .toEqual({ params: { path: file, content: `FormKey: 000800:HildaTheNord.esp\r\n${rewritten.replace(/\n/g, '\r\n')}` } });
+        // Written with a FormKey, or as another record, it stays as written.
+        expect(g.beforeToolCall(call('write', { path: file, content: `FormKey: 000801:HildaTheNord.esp\n${rewritten}` }), agent)).toBeUndefined();
+        expect(g.beforeToolCall(call('write', { path: file, content: rewritten.replace('Hilda', 'Helga') }), agent)).toBeUndefined();
+        // A copy's FormKey names the record it changes: left out, the copy is made new, which the build's warnings say.
+        fs.writeFileSync(file, 'FormKey: 012EB7:Skyrim.esm\nEditorID: Hilda\n');
+        expect(g.beforeToolCall(call('write', { path: file, content: rewritten }), agent)).toBeUndefined();
+        // An edit, and a file not there yet, are no rewrite of a numbered record.
+        expect(g.beforeToolCall(call('edit', { path: file, edits: [{ oldText: 'a', newText: 'b' }] }), agent)).toBeUndefined();
+        expect(g.beforeToolCall(call('write', { path: path.join(path.dirname(file), 'Helga.yaml'), content: rewritten }), agent)).toBeUndefined();
+    });
 });
 
 /** The reason a decision stops the call with; a decision that does not stop it fails the test. */

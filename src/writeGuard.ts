@@ -46,6 +46,9 @@ const MAX_RUNS = 200;
  * The project is the folder the path names when it is one, or else the one the run's last call of a plugin tool
  * named. OpenClaw's tool names only: an MCP client has no such hook, and the build's answers name each misplaced
  * file with its moveRecord call there.
+ *
+ * A write over a record file a build numbered keeps the FormKey line the build gave it, where the content leaves it out
+ * (keptFormKey).
  */
 export class WriteGuard {
     private readonly projects = new Map<string, string>();
@@ -92,7 +95,30 @@ export class WriteGuard {
             }
             if (edits.some((edit, i) => edit !== (params.edits as unknown[])[i])) changed.edits = edits;
         }
+        const written = changed.path ?? changed.file_path ?? params.path ?? params.file_path;
+        if (tool === 'write' && typeof written === 'string' && typeof params.content === 'string') {
+            const kept = this.keptFormKey(path.resolve(this.projectsDir, written.trim()), params.content);
+            if (kept !== undefined) changed.content = kept;
+        }
         return Object.keys(changed).length ? { params: changed } : undefined;
+    }
+
+    /**
+     * A write over a record file of a project's plugin folder, with the FormKey line a build gave the file put back where the
+     * content has none and names the same record: written again as the build had corrected it, the model's NPC lost the line,
+     * and with no build after, the text held a record not yet numbered — another FormID at its next build — beside the plugin
+     * built from it (eval round 84's npc #2). Only a FormKey of the project's own plugin: a copy's names the record it changes.
+     */
+    private keptFormKey(file: string, content: string): string | undefined {
+        if (/^FormKey[ \t]*:/m.test(content) || !fs.existsSync(file)) return undefined;
+        const [project, folder, ...rest] = path.relative(this.projectsDir, file).split(/[\\/]/);
+        if (!project || !rest.length || folder?.toLowerCase() !== 'plugin' || !this.isProject(project)) return undefined;
+        const plugin = /^ModKey:[ \t]*(\S+)/m.exec(fs.readFileSync(path.join(this.projectsDir, project, 'plugin', 'RecordData.yaml'), 'utf8'))?.[1];
+        const had = fs.readFileSync(file, 'utf8');
+        const key = /^FormKey:[ \t]*([0-9A-Fa-f]{6}:(\S+?))[ \t]*(?:#.*)?\r?$/m.exec(had);
+        const editorId = (text: string) => /^EditorID:[ \t]*['"]?([^\s'"#]+)/m.exec(text)?.[1]?.toLowerCase();
+        if (!plugin || !key || key[2].toLowerCase() !== plugin.toLowerCase() || !editorId(had) || editorId(had) !== editorId(content)) return undefined;
+        return `FormKey: ${key[1]}${content.includes('\r\n') ? '\r\n' : '\n'}${content}`;
     }
 
     /** agent_end: the run is over. */

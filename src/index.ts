@@ -51,8 +51,12 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         if (decision && 'block' in decision) {
             api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} stopped — ${decision.blockReason}`);
         } else if (decision) {
-            api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} placed in its project — ` +
-                filePaths(event.toolName, decision.params).join(', '));
+            const placed = filePaths(event.toolName, decision.params);
+            if (placed.length) api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} placed in its project — ${placed.join(', ')}`);
+            if (typeof decision.params.content === 'string') {
+                api.logger.info(`skyrim-modding-tools: ${context.agentId}'s ${event.toolName} keeps the FormKey a build gave the file — ` +
+                    /^FormKey:[ \t]*(\S+)/.exec(decision.params.content)?.[1]);
+            }
         }
         return decision;
     });

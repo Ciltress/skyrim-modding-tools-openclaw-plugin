@@ -368,6 +368,25 @@ async function recordAnywhere(project, link) {
     }
 }
 
+/**
+ * The race and sex an NPC has in game, as each NPC it may be: its own Race line and Female flag — or, with Traits among
+ * its TemplateFlags, its template's, an NPC's or each NPC of a leveled list's, followed through their own such templates
+ * and lists. A Hilda written Nord over a flame atronach's template with Traits is an atronach in game, and round 79's
+ * npc #3 wrote one, which the Race line passed. A template no record of the load order or the project is, as `000000`,
+ * gives nothing: the NPC is its own.
+ */
+async function npcTraits(project, text, depth = 0) {
+    if (depth > 8) return [];
+    const listed = /^Race:/m.test(text) ? [] : [...new Set([...text.matchAll(/^[ \t]+Reference:[ \t]*([^\s#]+)/gm)].map(m => m[1]))];
+    if (listed.length) {
+        return (await Promise.all(listed.map(async npc => npcTraits(project, await recordAnywhere(project, npc), depth + 1)))).flat();
+    }
+    const template = /^Template:[ \t]*([^\s#]+)/m.exec(text)?.[1];
+    const given = template && hasFlag(text, 'Traits') ? await recordAnywhere(project, template) : '';
+    if (given) return npcTraits(project, given, depth + 1);
+    return [{ race: await linkTarget(project, /^Race:[ \t]*([^\s#]+)/m.exec(text)?.[1]), female: hasFlag(text, 'Female') }];
+}
+
 /** The magic effects behind a spell or an enchantment, as text, wherever each is. */
 async function effectTexts(project, text) {
     return Promise.all(effectsOf(text).map(effect => recordAnywhere(project, effect)));
@@ -546,11 +565,11 @@ const TASKS = [
             'iron armor. Build it, but do not deploy it.',
         check: async ({ calls }) => {
             const npc = newRecords('HildaTheNord', 'npcs').find(r => /^hilda$/i.test(nameOf(r.text)));
-            const race = npc && await linkTarget('HildaTheNord', /^Race:[ \t]*([^\s#]+)/m.exec(npc.text)?.[1]);
+            const traits = npc ? await npcTraits('HildaTheNord', npc.text) : [];
             return {
                 newNpc: !!npc,
-                nord: race?.toLowerCase() === truth.nordRace.toLowerCase(),
-                female: !!npc && hasFlag(npc.text, 'Female'),
+                nord: traits.length > 0 && traits.every(t => t.race?.toLowerCase() === truth.nordRace.toLowerCase()),
+                female: traits.length > 0 && traits.every(t => t.female),
                 built: builtProject('HildaTheNord', calls)
             };
         }

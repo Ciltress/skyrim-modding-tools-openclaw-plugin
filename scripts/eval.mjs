@@ -27,7 +27,8 @@
  * --detailed runs each authoring task again as `<task>+detailed`, with a prompt that spells out what a player who
  * knows the game would ask for — stats, the vanilla thing it is like, the level — but no editor IDs; the checks stay
  * the same, so the two compare. sword+detailed is held, beside them, to the enchantment its prompt names: a new record
- * of the project, Flame Blade Burn, of 10 points (since round 78).
+ * of the project, Flame Blade Burn, of 10 points (since round 78); and to the sword's value of 150 and charge of 500
+ * (since round 88).
  *
  * Nothing is deployed and nothing is installed: the tools that would are denied. The plugin's projects folder is a
  * temporary one, emptied before each run; the instance is only read.
@@ -529,13 +530,18 @@ const TASKS = [
         // new and left the sword naming the game's by editor ID — the Fire Damage of 5 points — and passed, the game's
         // enchantment burning too.
         detailedCheck: async ({ calls }) => {
-            const { enchantment, items } = await flameBlade();
+            const { sword, enchantment, items } = await flameBlade();
             const { plugin } = projectRecords('FlameBlade');
+            // The value and charge it asks for: round 87's sword+detailed #4 kept the Iron Sword's value of 25 and wrote no
+            // charge, #5 no charge, and both passed — #4 failed on its enchantment's name alone.
+            const basicStats = (sword && /^BasicStats:[ \t]*\r?\n((?:[ \t]+\S.*(?:\r?\n|$))*)/m.exec(sword.text)?.[1]) ?? '';
             return {
                 ...await TASKS.find(t => t.id === 'sword').check({ calls }),
                 ownEnchantment: !!enchantment?.formKey && !!plugin && enchantment.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`),
                 enchantmentNamed: !!enchantment && /^flame blade burn$/i.test(nameOf(enchantment.text)),
-                tenPoints: items.some(({ text, magnitude }) => FIRE.test(text) && magnitude === 10)
+                tenPoints: items.some(({ text, magnitude }) => FIRE.test(text) && magnitude === 10),
+                valueOf150: /^[ \t]+Value:[ \t]*(['"]?)150\1[ \t]*\r?$/m.test(basicStats),
+                chargeOf500: !!sword && /^EnchantmentAmount:[ \t]*(['"]?)500\1[ \t]*\r?$/m.test(sword.text)
             };
         }
     },

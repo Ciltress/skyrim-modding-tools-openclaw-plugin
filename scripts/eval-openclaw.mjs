@@ -35,7 +35,7 @@ import { StringDecoder } from 'node:string_decoder';
 export const PLUGIN_ID = 'skyrim-modding-tools';
 
 /** The plugin's tools that change the instance or download: denied. */
-export const NOT_ALLOWED = ['deployProject', 'installMod', 'downloadNexusFile', 'disableMod'];
+export const NOT_ALLOWED = ['deployProject', 'installMod', 'downloadNexusFile', 'disableMod', 'enableMod', 'editIni'];
 
 /**
  * Denied, since an eval runs unwatched: OpenClaw's shell, and the tools that reach a paired device — on the user's
@@ -267,7 +267,7 @@ function holdsPlugin(folder) {
  * OpenAI server's window), the model entry copied when the model had none, the agent, its workspace files, and the
  * plugin's config — the settings the eval's own reads of the instance use too.
  */
-export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, agent, profile }) {
+export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, agent, profile }) {
     let config;
     try {
         config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -363,7 +363,7 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     // the measured agent. The Skyrim tools are the plugin's alone.
     const load = ((config.plugins.load ??= {}).paths ??= []);
     config.plugins.load.paths = [...load.filter(folder => path.resolve(folder) !== path.resolve(root) && !holdsPlugin(folder)), root];
-    plugin.config = { ...plugin.config, projectsDir, ...(agentId ? { agents: [agentId] } : {}), ...(profile ? { profile } : {}) };
+    plugin.config = { ...plugin.config, projectsDir, ...(crashLogDir ? { crashLogDir } : {}), ...(agentId ? { agents: [agentId] } : {}), ...(profile ? { profile } : {}) };
     if (config.mcp?.servers) config.mcp.servers = {};
 
     config.tools ??= {};

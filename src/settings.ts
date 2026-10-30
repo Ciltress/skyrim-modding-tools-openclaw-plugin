@@ -63,6 +63,14 @@ export const SETTINGS = {
         help: 'Mod Organizer under Proton: the prefix it runs in, the folder with dosdevices in it. Found by itself for MO2-LINT.',
         advanced: true
     },
+    crashLogDir: {
+        variable: 'SKYRIM_CRASH_LOG_DIR',
+        schema: { type: 'string' },
+        label: 'Crash log folder',
+        help: 'Where readCrashLog reads Crash Logger SSE\'s crash-*.log files. Unset: the SKSE folder in the game\'s My Games ' +
+            'folder, where Crash Logger writes them.',
+        advanced: true
+    },
     projectsDir: {
         variable: 'SKYRIM_PROJECTS_DIR',
         schema: { type: 'string' },
@@ -162,7 +170,7 @@ export const UI_HINTS: Record<Field | 'agents', UiHint> = {
 
 /** The Settings page's sections. */
 export const CONFIG_GROUPS = [
-    { id: 'game', title: 'Mod manager', order: 10, properties: ['modManager', 'mo2Instance', 'amethystDir', 'winePrefix'] },
+    { id: 'game', title: 'Mod manager', order: 10, properties: ['modManager', 'mo2Instance', 'amethystDir', 'winePrefix', 'crashLogDir'] },
     { id: 'projects', title: 'Projects and scripts', order: 20, properties: ['projectsDir', 'creationKitDir', 'papyrusCompiler'] },
     { id: 'agents', title: 'Agents', order: 30, properties: ['agents'] },
     { id: 'nexus', title: 'Nexus Mods', order: 40, properties: ['nexusApiKey'] },

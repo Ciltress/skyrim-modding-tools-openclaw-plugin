@@ -178,6 +178,9 @@ const ollamaVersion = OPENAI ? undefined : (await ollama('/api/version').catch((
 
 const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-projects-'));
 leftovers.push(projectsDir);
+// The crash-log folder readCrashLog reads in a run: a crash task puts its one log there.
+const crashLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-crash-logs-'));
+leftovers.push(crashLogDir);
 
 // OpenClaw: its entry script, the proxy in front of the model's server, and the session's configuration.
 const openClaw = await (async () => {
@@ -192,7 +195,7 @@ const openClaw = await (async () => {
     let session;
     try {
         session = writeSessionConfig({
-            dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir,
+            dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir, crashLogDir,
             agent: opt['openclaw-agent'], profile: opt.profile
         });
     } catch (error) {
@@ -592,8 +595,56 @@ const TASKS = [
                 built: builtProject('MavenNote', calls)
             };
         }
-    }
+    },
+    // Crash logs: crashes made on purpose in the test instance (2026-10-30), whose cause is known.
+    crashTask({
+        id: 'crash-dll',
+        prompt: 'My game crashed right after I started it. Why did it crash, and what should I do about it?',
+        log: 'crash-2026-10-30-06-13-38.log',
+        mod: 'Lantern Glow Tweaks',
+        named: /lantern ?glow/i
+    }),
+    crashTask({
+        id: 'crash-mesh',
+        prompt: 'Skyrim crashes to the desktop every time I start it, before the main menu even shows up. What is wrong?',
+        log: 'crash-2026-10-30-06-24-26.log',
+        mod: 'Elder Banner Main Menu',
+        named: /elder banner|logo\.nif/i
+    })
 ];
+
+/**
+ * A "my game crashed" task. Its log — a crash made on purpose: an SKSE plugin writing through a null pointer, a logo
+ * mesh linking a shader property as a child — is the only one in the run's crash-log folder, and its mod is enabled,
+ * as it was when the game crashed; afterwards the mod is disabled again. Passed when the answer names the mod and a
+ * fix for it, after reading the log, and the run changed nothing: the tools that would are denied, so trying is enough.
+ */
+function crashTask({ id, prompt, log, mod, named }) {
+    /** Every mod's state and its plugins', as the mod manager has them. */
+    const modsState = async () => JSON.stringify((await callServerJson('listMods', { details: true, limit: 5000 })).mods
+        .map(m => [m.name, m.enabled, (m.plugins ?? []).map(p => [p.name, p.active])]));
+    let before = '';
+    return {
+        id,
+        skill: 'skyrim-modding-crash-analysis',
+        prompt,
+        before: async () => {
+            for (const entry of fs.readdirSync(crashLogDir)) fs.rmSync(path.join(crashLogDir, entry), { force: true });
+            fs.copyFileSync(path.join(root, 'scripts', 'eval-crash-logs', log), path.join(crashLogDir, log));
+            await callServerJson('enableMod', { mod });
+            before = await modsState();
+        },
+        after: async () => {
+            await callServerJson('disableMod', { mod }).catch(error => console.error(`could not disable ${mod} again: ${error.message}`));
+        },
+        check: async ({ answer, calls }) => ({
+            readTheLog: calls.some(c => c.name === 'readCrashLog' && !c.isError),
+            rightMod: named.test(answer),
+            rightFix: /\b(disabl|remov|uninstall|reinstall|updat|replac|turn(?:ed|ing)? off)/i.test(answer),
+            nothingChanged: !calls.some(c => NOT_ALLOWED.includes(c.name)) && await modsState() === before
+        })
+    };
+}
 
 /** Every escape a copy left in the run's record files, as `file: line`. */
 function leftEscapes() {
@@ -644,16 +695,21 @@ function emptyProjects() {
     for (const entry of fs.readdirSync(projectsDir)) fs.rmSync(path.join(projectsDir, entry), { recursive: true, force: true });
 }
 
-/** One task through OpenClaw, with the model behind the proxy. */
+/** One task through OpenClaw, with the model behind the proxy; a task's `before` sets the instance up, `after` puts it back. */
 async function runTask(task, run) {
     emptyProjects();
-    const started = Date.now();
-    const session = await runOpenClaw({
-        entry: openClaw.entry, prompt: task.prompt, provider: opt.provider, model: opt.model, cwd: projectsDir, configFile: openClaw.file,
-        workspaceFiles: openClaw.workspaceFiles, proxy: openClaw.proxy, toolNames, instructionsLine,
-        maxTurns: MAX_TURNS, timeoutMs: TURN_TIMEOUT_MS, thinking: THINKING
-    });
-    return resultOf(task, run, { ...session, turns: session.turnStats, started });
+    await task.before?.();
+    try {
+        const started = Date.now();
+        const session = await runOpenClaw({
+            entry: openClaw.entry, prompt: task.prompt, provider: opt.provider, model: opt.model, cwd: projectsDir, configFile: openClaw.file,
+            workspaceFiles: openClaw.workspaceFiles, proxy: openClaw.proxy, toolNames, instructionsLine,
+            maxTurns: MAX_TURNS, timeoutMs: TURN_TIMEOUT_MS, thinking: THINKING
+        });
+        return await resultOf(task, run, { ...session, turns: session.turnStats, started });
+    } finally {
+        await task.after?.();
+    }
 }
 
 /** A run's record: the checks and the counts. */

@@ -71,7 +71,7 @@ describe('a call', () => {
         const { tool, fake } = plugin();
         const result = await tool('readSkill').execute('call-1', {});
         expect(fake.connects()).toBe(1);
-        expect(JSON.parse(result.content[0].text)).toMatchObject({ status: 'success', skillCount: 6 });
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ status: 'success', skillCount: 7 });
         // Nothing in details for OpenClaw to grade: a `status` there that is not a success fails the call.
         expect(result.details).toEqual({});
     });

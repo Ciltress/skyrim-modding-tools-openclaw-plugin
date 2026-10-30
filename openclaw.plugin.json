@@ -32,6 +32,10 @@
         "type": "string",
         "description": "Mod Organizer under Proton: the prefix it runs in, the folder with dosdevices in it. Found by itself for MO2-LINT."
       },
+      "crashLogDir": {
+        "type": "string",
+        "description": "Where readCrashLog reads Crash Logger SSE's crash-*.log files. Unset: the SKSE folder in the game's My Games folder, where Crash Logger writes them."
+      },
       "projectsDir": {
         "type": "string",
         "description": "Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw's state folder (~/.openclaw), which an update of the plugin leaves alone. Make it the modding agents' working folder too."
@@ -99,6 +103,11 @@
       "help": "Mod Organizer under Proton: the prefix it runs in, the folder with dosdevices in it. Found by itself for MO2-LINT.",
       "advanced": true
     },
+    "crashLogDir": {
+      "label": "Crash log folder",
+      "help": "Where readCrashLog reads Crash Logger SSE's crash-*.log files. Unset: the SKSE folder in the game's My Games folder, where Crash Logger writes them.",
+      "advanced": true
+    },
     "projectsDir": {
       "label": "Projects folder",
       "help": "Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw's state folder (~/.openclaw), which an update of the plugin leaves alone. Make it the modding agents' working folder too."
@@ -153,7 +162,8 @@
         "modManager",
         "mo2Instance",
         "amethystDir",
-        "winePrefix"
+        "winePrefix",
+        "crashLogDir"
       ]
     },
     {
@@ -228,6 +238,9 @@
       "checkGameVersion",
       "installMod",
       "disableMod",
+      "enableMod",
+      "editIni",
+      "readCrashLog",
       "healthcheck"
     ]
   },
@@ -287,6 +300,15 @@
       "optional": true
     },
     "disableMod": {
+      "optional": true
+    },
+    "enableMod": {
+      "optional": true
+    },
+    "editIni": {
+      "optional": true
+    },
+    "readCrashLog": {
       "optional": true
     },
     "healthcheck": {

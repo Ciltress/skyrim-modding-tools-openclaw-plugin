@@ -1,12 +1,27 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Ciltress/skyrim-modding-tools-openclaw-plugin/main/.github/banner.jpg" alt="Skyrim Modding Tools: OpenClaw Plugin — a mudcrab at its workbench, forging a glowing sword" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin/actions/workflows/ci.yml"><img src="https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/Skyrim-Special%20Edition-5a6b7c" alt="Skyrim Special Edition">
+  <img src="https://img.shields.io/badge/OpenClaw-2026.10.7%2B-e8572a" alt="OpenClaw 2026.10.7 or later">
+</p>
+
 # skyrim-modding-tools-openclaw-plugin
 
-The Skyrim Special Edition modding tools as a native [OpenClaw](https://openclaw.ai) plugin: look records up
-across a Mod Organizer or Amethyst load order, author mods and patches as text projects, build them into plugins
-and deploy them, install downloaded mods. The tools are
-[skyrim-modding-tools-core](https://github.com/Ciltress/skyrim-modding-tools-core)'s; the
+**Mod Skyrim Special Edition with your OpenClaw agents** — even with a small model running on your own PC. Ask an
+agent for a flaming sword, a patch, a mod from Nexus or the reason for your last crash: this plugin gives it the
+tools to look into your whole load order, write mods as text projects, build them into plugins and deploy them into
+Mod Organizer or Amethyst, install mods, and read crash logs.
+
+The tools are [skyrim-modding-tools-core](https://github.com/Ciltress/skyrim-modding-tools-core)'s; the
 [MCP server](https://github.com/Ciltress/skyrim-modding-tools-mcp) serves the same tools to any MCP client.
 
-What the plugin does that an MCP server cannot in OpenClaw:
+## Why a plugin
+
+It does what an MCP server cannot in OpenClaw:
 
 - **Tools under their own names** — `editRecord`, not `skyrim__editRecord` — kept outside Tool Search, so a
   small local model sees them without searching.

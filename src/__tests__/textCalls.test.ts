@@ -53,6 +53,21 @@ describe('textCallRevision', () => {
             .toBe('The answer wrote a tool call as text: newProject(project="FlameBlade").');
     });
 
+    it('reads a call Ollama passed on as text, its tokens left out, and OpenClaw\'s file tools by name', () => {
+        // Eval round 92's sword #5: a write whose text closed with a plain quote, which Ollama could not parse.
+        const file = 'EditorID: FlameBlade\nName:\n  TargetLanguage: English\n  Value: Flame Blade\n' +
+            'BasicStats:\n  Value: 35\n  Weight: 10\n  Damage: 10\n'.repeat(8);
+        const passedOn = textCallRevision(`call:write{content:${file}"\npath:FlameBlade/plugin/Weapons/FlameBlade.yaml}`, 'r', TOOLS)!;
+        expect(passedOn.reason).toMatch(/^The answer wrote a tool call as text: write\{content:EditorID: FlameBlade Name: TargetLanguage: English /);
+        expect(passedOn.reason).toMatch(/…\.$/);
+        expect(passedOn.reason.length).toBeLessThan(400);
+        expect(passedOn.retry.instruction).toMatch(/Make it as a tool call now, then go on with the task\.$/);
+        expect(textCallRevision('Writing the file now.\n\nedit{path: "Npcs/Hilda.yaml", edits: [{oldText: "a", newText: "b"}]}', 'r', TOOLS)!.reason)
+            .toBe('The answer wrote a tool call as text: edit{path: "Npcs/Hilda.yaml", edits: [{oldText: "a", newText: "b"}]}.');
+        // A `call:` inside a sentence is none.
+        expect(textCallRevision('I made one call: buildProject answered success.', 'r', TOOLS)).toBeUndefined();
+    });
+
     it('leaves a call named in an answer that goes on past it, a name not the agent\'s, and an answer without one', () => {
         expect(textCallRevision('I changed it with editRecord {"project": "FlameBlade", "record": "Weapons/FlameBlade.yaml"} and ' +
             'built it: buildProject answered success.', 'r', TOOLS)).toBeUndefined();

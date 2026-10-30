@@ -2,16 +2,22 @@ import type { FinalizeRevision } from './buildCheck.js';
 
 /**
  * A call's opening tag in a model's own call syntax, written as words — `<tool_call>`, `<|tool_call>`, `<call>`,
- * `<tool_code>` — with the `call:` a model's tool-call tokens put before the name.
+ * `<tool_code>` — with the `call:` a model's tool-call tokens put before the name; or that `call:` alone at a line's
+ * start, as Ollama passes on a call it could not parse, its tokens left out: `call:write{content:…}` (eval round 92).
  */
-const CALL_TAG = /<\|?(?:tool_call|call|tool_code|function_call)\|?>\s*(?:call:)?/g;
+const CALL_TAG = /<\|?(?:tool_call|call|tool_code|function_call)\|?>\s*(?:call:)?|^[ \t]*call:(?=[A-Za-z_])/gm;
 const NAME = /[A-Za-z_][\w-]*/y;
 /** The keys a call written as JSON names its tool under: `{"tool_name": "readSkill", "tool_args": {…}}`. */
 const NAME_KEYS = 'tool_name|tool|name|function|function_name|id';
 /** What may follow a call at an answer's end: closing tags, a code fence, the parenthesis of a `print(…)` around it. */
 const AFTER_CALL = /^(?:\s|<\/?\|?[\w-]+\|?>|```|\))*$/;
-/** OpenClaw's Tool Search tools, by which a model calls a tool the catalog keeps: `openclaw_tool_call{id: "readSkill", …}`. */
-const OPENCLAW_TOOLS = ['openclaw_tool_call', 'tool_search', 'tool_describe'];
+/**
+ * OpenClaw's own tools a modding agent calls: its Tool Search tools, by which a model calls a tool the catalog keeps —
+ * `openclaw_tool_call{id: "readSkill", …}` — and the file tools a record file is written with.
+ */
+const OPENCLAW_TOOLS = ['openclaw_tool_call', 'tool_search', 'tool_describe', 'write', 'edit', 'apply_patch'];
+/** The most of a call the instruction and the log quote: a call written as text can carry a whole record file. */
+const QUOTED = 300;
 /**
  * A step said in the first person as about to be taken, after a word and a comma, or a first, now or next, at most:
  * "First, I am reading …", "Now I'm reading …", "I will start by …", "Let me check …" — not "Let me know …",
@@ -145,5 +151,8 @@ function opening(text: string, at: number): number {
     return -1;
 }
 
-/** A call as one line, for the instruction and the log. */
-const flat = (call: string) => call.replace(/\s+/g, ' ').trim();
+/** A call as one line, for the instruction and the log; a long one cut short. */
+function flat(call: string): string {
+    const line = call.replace(/\s+/g, ' ').trim();
+    return line.length > QUOTED ? `${line.slice(0, QUOTED)}…` : line;
+}

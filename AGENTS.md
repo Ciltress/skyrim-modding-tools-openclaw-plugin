@@ -10,6 +10,20 @@ GitHub repository. **Core-first:** a change to a tool, an answer, a guide or a s
 only here; this repository holds OpenClaw's glue. What only OpenClaw can do — a hook — stays here, and the MCP
 server gets the nearest equivalent where one exists (the core's ADR-0009).
 
+## The graph: find your way with it, keep it current
+
+`graphify-out/graph.json` is this repo's knowledge graph: its code, documents and images, and how they link. It is
+built by [graphify](https://github.com/Graphify-Labs/graphify), the Python package `graphifyy` (`uv tool install
+graphifyy`; the npm package of that name is another project).
+
+- **Ask the graph before you search.** Run `graphify query "<question>"` before a grep or a source read,
+  `graphify path "<A>" "<B>"` for how two things connect, and `graphify explain "<concept>"` for one of them; then
+  read only the lines it pointed you to.
+- **Update it after every change,** in a commit of its own right after the change: `graphify update .` for code (by
+  syntax, no model needed). A changed document or image needs the semantic pass, `/graphify --update`, which reads it
+  again; `graphify update .` refuses where a document's saved nodes would go missing.
+- Only `graph.json` and `.graphify_labels.json` are in git; the rest of `graphify-out/` stays local.
+
 ## Layout
 
 ```

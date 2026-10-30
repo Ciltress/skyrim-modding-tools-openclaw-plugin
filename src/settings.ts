@@ -97,8 +97,8 @@ export const SETTINGS = {
         variable: 'NEXUS_API_KEY',
         schema: { type: 'string' },
         label: 'Nexus Mods API key',
-        help: 'Your personal key, from your Nexus Mods account settings. Without it the Nexus tools are not offered; ' +
-            'downloadNexusFile only for a premium account.',
+        help: 'Your personal key, from your Nexus Mods account settings, for downloading through Nexus: downloadNexusFile ' +
+            'is offered for a premium account\'s. Searching and reading Nexus need no key.',
         sensitive: true
     },
     profile: {
@@ -120,7 +120,7 @@ export const SETTINGS = {
         variable: 'MCP_GATE',
         schema: { type: 'boolean' },
         label: 'Withhold what the backend cannot serve',
-        help: 'On (the default): a tool the backend cannot serve — the Nexus tools without a key — is not offered.',
+        help: 'On (the default): a tool the backend cannot serve — the Nexus download without a premium account\'s key — is not offered.',
         advanced: true,
         value: given => given === false ? 'off' : undefined
     },

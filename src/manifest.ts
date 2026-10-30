@@ -3,13 +3,22 @@ import { CONFIG_CONTRACTS, CONFIG_GROUPS, CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT,
 import { SkyrimTools } from './tools.js';
 
 /**
- * openclaw.plugin.json, rendered from the tools themselves: every tool the plugin can register, each optional,
- * the config it reads with how OpenClaw's Settings page shows it, and the core's skills (copied into skills/ by the
- * build). Rendered with every profile's tools, since the profile is the user's setting; getTools() never touches
- * the backend.
+ * The settings a gated tool needs, by the backend feature it needs: declared as the tool's `configSignals`, OpenClaw's
+ * cheap evidence of a tool's availability, so OpenClaw can tell the tool needs that setting without loading the plugin.
+ * Downloading needs the Nexus key; that it is a premium account's, only Nexus tells, at run time (the capability gate).
+ */
+const FEATURE_SETTINGS: Record<string, string[]> = { 'nexus-premium': ['nexusApiKey'] };
+
+/**
+ * openclaw.plugin.json, rendered from the tools themselves: every tool the plugin can register, each optional and with
+ * the settings it needs, the config it reads with how OpenClaw's Settings page shows it, and the core's skills (copied
+ * into skills/ by the build). Rendered with every profile's tools, since the profile is the user's setting; getTools()
+ * never touches the backend.
  */
 export function renderManifest(): string {
-    const names = new SkyrimTools(undefined as unknown as AppBackend, pluginProduct(PLUGIN_ROOT), {}).toolNames();
+    const tools = new SkyrimTools(undefined as unknown as AppBackend, pluginProduct(PLUGIN_ROOT), {});
+    const names = tools.toolNames();
+    const features = tools.toolFeatures();
     const manifest = {
         id: PLUGIN_ID,
         name: 'Skyrim Modding Tools',
@@ -26,7 +35,12 @@ export function renderManifest(): string {
         // plugin-skills, and does not search deeper (skills/Domain alone gave it nothing to link).
         skills: ['skills/Domain/skills'],
         contracts: { tools: names },
-        toolMetadata: Object.fromEntries(names.map(name => [name, { optional: true }]))
+        toolMetadata: Object.fromEntries(names.map(name => {
+            const required = FEATURE_SETTINGS[features.get(name) ?? ''];
+            return [name, required
+                ? { optional: true, configSignals: [{ rootPath: `plugins.entries.${PLUGIN_ID}.config`, required }] }
+                : { optional: true }];
+        }))
     };
     return `${JSON.stringify(manifest, null, 2)}\n`;
 }

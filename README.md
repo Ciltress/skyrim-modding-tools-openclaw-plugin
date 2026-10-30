@@ -70,7 +70,8 @@ openclaw plugins install -l .
 ### Settings
 
 Then set it up in OpenClaw's Settings page — *Plugins → Skyrim Modding Tools*: the Mod Organizer instance (or
-Amethyst), the projects folder, the agents that mod, a Nexus Mods API key if you want the Nexus tools — or in
+Amethyst), the projects folder, the agents that mod, a premium account's Nexus Mods API key if you want to download
+through Nexus (searching it needs none) — or in
 `~/.openclaw/openclaw.json`:
 
 ```json5

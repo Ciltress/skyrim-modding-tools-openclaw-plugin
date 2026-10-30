@@ -21,4 +21,12 @@ describe('the committed manifest', () => {
         expect(Object.values(manifest.toolMetadata).every((m: any) => m.optional === true)).toBe(true);
         expect(manifest.skills).toEqual(['skills/Domain/skills']);
     });
+
+    it('tells OpenClaw the Nexus download needs the key, and searching and reading need nothing', () => {
+        const { toolMetadata } = JSON.parse(renderManifest());
+        expect(toolMetadata.downloadNexusFile.configSignals)
+            .toEqual([{ rootPath: 'plugins.entries.skyrim-modding-tools.config', required: ['nexusApiKey'] }]);
+        expect(toolMetadata.searchNexus).toEqual({ optional: true });
+        expect(toolMetadata.readNexusMod).toEqual({ optional: true });
+    });
 });

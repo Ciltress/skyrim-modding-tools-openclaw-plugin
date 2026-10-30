@@ -105,14 +105,16 @@ describe('a call', () => {
     });
 
     it('withholds what the backend cannot serve, from the next tool list and from a call', async () => {
-        // A backend that says what it has, and Nexus is not among it. An empty answer gates nothing, as the core's
-        // evaluateGate decides: it cannot tell "nothing" from "cannot say".
+        // A backend that says what it has, and a premium Nexus account is not among it: the download goes, searching
+        // Nexus stays, as it needs no key. An empty answer gates nothing, as the core's evaluateGate decides: it cannot
+        // tell "nothing" from "cannot say".
         const { tool, tools, registered } = plugin({ MCP_GATE: 'on' }, { capabilities: async () => ['projects'] });
         await tools.ensureGate();
-        const nexus = registered.find(entry => entry.name === 'searchNexus')!;
-        expect(nexus.factory()).toBeNull();
+        const download = registered.find(entry => entry.name === 'downloadNexusFile')!;
+        expect(download.factory()).toBeNull();
         expect(tool('findRecords')).not.toBeNull();
-        await expect(tools.call('searchNexus', { query: 'x' })).rejects.toMatchObject({ code: -32600 });
+        expect(tool('searchNexus')).not.toBeNull();
+        await expect(tools.call('downloadNexusFile', { modId: 1, fileId: 2 })).rejects.toMatchObject({ code: -32600 });
     });
 
     it('cuts an answer over the budget into the core\'s valid JSON naming the next step', async () => {

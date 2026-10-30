@@ -111,6 +111,11 @@ export class SkyrimTools {
         return this.listed.map(tool => tool.name);
     }
 
+    /** The backend feature each tool needs (`needsFeature`), by name: what the manifest tells OpenClaw a gated tool needs set. */
+    toolFeatures(): Map<string, string | undefined> {
+        return new Map(this.listed.map(tool => [tool.name, tool.needsFeature]));
+    }
+
     /**
      * Registers each tool as optional — an agent sees it only when its tools.allow names it or the plugin — and as
      * a factory, so a tool the gate withholds is left out of the next run's tools.

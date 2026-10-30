@@ -217,6 +217,13 @@
   "skills": [
     "skills/Domain/skills"
   ],
+  "cliCommands": [
+    {
+      "name": "skyrim",
+      "description": "Skyrim Modding Tools: set them up, and Muddy, the modding agent",
+      "hasSubcommands": true
+    }
+  ],
   "contracts": {
     "tools": [
       "readServerGuide",

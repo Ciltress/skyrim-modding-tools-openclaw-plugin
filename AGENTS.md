@@ -27,6 +27,9 @@ src/
   textCalls.ts    before_agent_finalize: an answer that wrote a tool call as text is asked to make it; one that
                   announced a step, in a run with no call yet (buildCheck.ts knows), to take it
   manifest.ts     renders openclaw.plugin.json from the tools
+  setup.ts        `openclaw skyrim setup`'s questions (OpenClaw's WizardPrompter) and the config they write: the
+                  instance, the Nexus key, and Muddy, the core's modding agent — model, context, thinking, tools, skills
+  setupCommand.ts registers the `skyrim` CLI command (manifest cliCommands) and writes Muddy's workspace and the config
   __tests__/      vitest, offline; the doubles are the core's (skyrim-modding-tools-core/testing)
 scripts/
   link-openclaw.mjs   node_modules/openclaw -> the installed OpenClaw (types; the gateway supplies the SDK)

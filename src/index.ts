@@ -4,6 +4,7 @@ import { createBackend, readConfiguration, stopBackends } from 'skyrim-modding-t
 import { BuildCheck, filePaths } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
+import { registerSetupCommand } from './setupCommand.js';
 import { announcedStepRevision, textCallRevision } from './textCalls.js';
 import { SkyrimTools } from './tools.js';
 import { WriteGuard } from './writeGuard.js';
@@ -21,11 +22,21 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
     const backend = createBackend(settings.env, { product });
     const tools = new SkyrimTools(backend, product, settings.env);
     tools.register(api);
+    // `openclaw skyrim setup`: where OpenClaw's CLI collects commands, and in the gateway, which lists them too.
+    if (api.registrationMode === 'cli-metadata' || api.registrationMode === 'discovery' || api.registrationMode === 'full') {
+        registerSetupCommand(api);
+    }
 
     // Only in the gateway: the CLI loads plugins too, to list or inspect them, and must not start a helper.
     // OpenClaw stops the service before a reload loads the next generation, which brings a helper of its own.
     if (api.registrationMode === 'full') {
         api.registerService({ id: PLUGIN_ID, start: () => { void tools.ensureGate(); }, stop: () => { stopBackends(); } });
+        // Installed from ClawHub, the plugin is not set up yet, and OpenClaw runs nothing of a tool plugin's after an
+        // install: the gateway's log says what to run.
+        if (settings.agents.length === 0) {
+            api.logger.warn('skyrim-modding-tools: no agent mods with these tools yet. Set them up, and Muddy, the ' +
+                'modding agent, with: openclaw skyrim setup');
+        }
     }
 
     const projectsDir = readConfiguration(settings.env, { root: settings.root }).paths.SKYRIM_PROJECTS_DIR!;

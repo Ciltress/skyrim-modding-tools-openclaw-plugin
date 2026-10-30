@@ -12,19 +12,24 @@ vi.mock('skyrim-modding-tools-core', async original => ({
 
 type Service = Parameters<OpenClawPluginApi['registerService']>[0];
 
-/** A plugin API that keeps the services and hooks registered and ignores the rest. */
+/** A plugin API that keeps the services, hooks, CLI commands and warnings registered and ignores the rest. */
 function entryApi(registrationMode: OpenClawPluginApi['registrationMode'], pluginConfig?: Record<string, unknown>) {
     const services: Service[] = [];
     const hooks = new Map<string, (event: unknown, context: unknown) => unknown>();
+    const commands: string[] = [];
+    const warnings: string[] = [];
     const api = {
         registrationMode,
         pluginConfig,
         registerTool: () => { },
         registerService: (service: Service) => { services.push(service); },
+        registerCli: (_registrar: unknown, options: { descriptors: { name: string }[] }) => {
+            commands.push(...options.descriptors.map(descriptor => descriptor.name));
+        },
         on: (name: string, handler: (event: unknown, context: unknown) => unknown) => { hooks.set(name, handler); },
-        logger: { info: () => { } }
+        logger: { info: () => { }, warn: (message: string) => { warnings.push(message); } }
     };
-    return { api: api as unknown as OpenClawPluginApi, services, hooks };
+    return { api: api as unknown as OpenClawPluginApi, services, hooks, commands, warnings };
 }
 
 describe('the plugin in the gateway', () => {
@@ -41,6 +46,22 @@ describe('the plugin in the gateway', () => {
         const { api, services } = entryApi('discovery');
         registerSkyrimModdingTools(api);
         expect(services).toEqual([]);
+    });
+
+    it('offers openclaw skyrim setup where the CLI of OpenClaw collects its commands', () => {
+        const { api, commands } = entryApi('cli-metadata');
+        registerSkyrimModdingTools(api);
+        expect(commands).toEqual(['skyrim']);
+    });
+
+    it('says in the gateway log how to set it up, while no agent mods with it, as after an install from ClawHub', () => {
+        const fresh = entryApi('full');
+        registerSkyrimModdingTools(fresh.api);
+        expect(fresh.warnings).toEqual([expect.stringContaining('openclaw skyrim setup')]);
+
+        const set = entryApi('full', { agents: ['muddy'] });
+        registerSkyrimModdingTools(set.api);
+        expect(set.warnings).toEqual([]);
     });
 
     it('puts the instructions into the system prompt of the agents that mod, and of no other', () => {

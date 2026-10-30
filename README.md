@@ -40,6 +40,35 @@ It does what an MCP server cannot in OpenClaw:
   ("First, I am reading the basics skill.", "Let me check …" — not "Let me know …") and does nothing is asked to take
   that step, if it was meant to be taken now.
 
+## Modding with Muddy! 🦀
+
+<img src="assets/icon.png" align="right" width="140" alt="Muddy, a mudcrab with a sword">
+
+Meet **Muddy**, the modding agent: a mudcrab from the shore below Riverwood who learned to mod Skyrim. Cheerful,
+proud of his shell, exact at the workbench, and made for this plugin's tools. After the [install](#install), one
+command sets up the plugin and Muddy:
+
+```bash
+openclaw skyrim setup
+```
+
+The wizard looks like OpenClaw's own setup and asks for:
+
+1. **Your Mod Organizer instance:** one it finds, or a folder you paste. Please use a test instance. With Amethyst on
+   Linux, there is nothing to ask.
+2. **A Nexus Mods API key:** only for downloading with a premium account. Enter skips it.
+3. **Muddy:** his **model** (one OpenClaw lists, or one Ollama has installed), his **context** (32k is enough for one
+   mod at a time; more needs more memory), how long he **thinks**, and whether he may **learn** from his work by
+   writing skills of his own (`skill_workshop`).
+
+He gets his own workspace, `~/.openclaw/workspace-muddy`, with his soul, his identity and his avatar. The projects
+folder is his working folder, and he has the modding skills and the tools he needs: this plugin's, the file tools, the
+web and his memory. Run the wizard again to change any of it: it updates the Muddy it finds and keeps what you added.
+
+For a script or an agent setting it up for you, `--yes` asks nothing:
+`openclaw skyrim setup --yes --instance "<folder>" --model ollama/<model>`, with `--context`, `--thinking`,
+`--no-learn` and `--no-muddy` besides.
+
 ## Install
 
 ### From ClawHub
@@ -50,9 +79,12 @@ Needs OpenClaw 2026.10.7 or later and the .NET 10 runtime for the plugin helper:
 
 ```bash
 openclaw plugins install clawhub:skyrim-modding-tools
+openclaw skyrim setup
 ```
 
-The package brings the core and its helper, built.
+The package brings the core and its helper, built. The second line is the [wizard](#modding-with-muddy-), which sets
+up the plugin and Muddy. OpenClaw runs nothing of a plugin after installing it, so until an agent mods with the tools,
+the gateway's log reminds you of it.
 
 ### From source
 
@@ -65,11 +97,13 @@ npm install
 npm run build
 npm run build:helper
 openclaw plugins install -l .
+openclaw skyrim setup
 ```
 
 ### Settings
 
-Then set it up in OpenClaw's Settings page — *Plugins → Skyrim Modding Tools*: the Mod Organizer instance (or
+The wizard sets what most need. Everything else, or all of it by hand, is in OpenClaw's Settings page — *Plugins →
+Skyrim Modding Tools*: the Mod Organizer instance (or
 Amethyst), the projects folder, the agents that mod, a premium account's Nexus Mods API key if you want to download
 through Nexus (searching it needs none) — or in
 `~/.openclaw/openclaw.json`:

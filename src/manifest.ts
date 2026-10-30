@@ -1,5 +1,6 @@
 import type { AppBackend } from 'skyrim-modding-tools-core';
 import { CONFIG_CONTRACTS, CONFIG_GROUPS, CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, UI_HINTS, pluginProduct } from './settings.js';
+import { CLI_COMMAND } from './setupCommand.js';
 import { SkyrimTools } from './tools.js';
 
 /**
@@ -34,6 +35,8 @@ export function renderManifest(): string {
         // The folder whose children are the skills: OpenClaw links each child holding a SKILL.md into its
         // plugin-skills, and does not search deeper (skills/Domain alone gave it nothing to link).
         skills: ['skills/Domain/skills'],
+        // `openclaw skyrim …`, listed in OpenClaw's help without loading the plugin.
+        cliCommands: [CLI_COMMAND],
         contracts: { tools: names },
         toolMetadata: Object.fromEntries(names.map(name => {
             const required = FEATURE_SETTINGS[features.get(name) ?? ''];

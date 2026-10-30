@@ -1,4 +1,1 @@
-{
-  "6": "SkyrimTools Tool Calls",
-  "8": "TypeScript Config"
-}
+{"0": "Build Check and Write Guard", "1": "Package Manifest", "2": "Setup Wizard and Muddy", "3": "Eval Tasks and Checks", "4": "ClawHub Staging and Build Scripts", "5": "Plugin Entry, Settings and Manifest", "6": "Eval OpenClaw Session", "7": "SkyrimTools Tool Calls", "8": "Plugin, Muddy and the Instructions Hook", "9": "Text-Call and Announced-Step Check", "10": "Eval Record Readers", "11": "TypeScript Config", "12": "Repo Docs and Conventions", "13": "OpenClaw Host and CI", "14": "Core-First and the ClawHub Package", "15": "OpenClaw Package Metadata", "16": "Helper and Third-Party Notices", "17": "Eval Record Lookups", "18": "Install and Configuration", "19": "Eval Server Calls", "20": "Gateway Modes and the Eval", "21": "Eval Model Providers"}

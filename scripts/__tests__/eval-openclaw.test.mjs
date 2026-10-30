@@ -108,6 +108,18 @@ describe('writeSessionConfig', () => {
         expect(written.agents.entries['skyrim-e4b'].tools.allow).toEqual(['read', 'write', 'skyrim-modding-tools']);
     });
 
+    it('learns nothing during a round: no skill_workshop, and self-learning off where the user has it on', () => {
+        const learning = userConfig(config => {
+            config.agents.entries['skyrim-e4b'].tools.allow.push('skill_workshop');
+            config.skills = { workshop: { autonomous: { mode: 'auto' } } };
+            return config;
+        });
+        const { written } = session(learning, { agent: 'skyrim-e4b' });
+        expect(written.tools.deny).toContain('skill_workshop');
+        expect(written.agents.entries['skyrim-e4b'].tools.allow).not.toContain('skill_workshop');
+        expect(written.skills.workshop.autonomous.mode).toBe('off');
+    });
+
     it('gives an unset tool profile the gateway\'s meaning, and keeps one the user set', () => {
         // agent exec would take `coding` for it, which leaves out every native plugin tool.
         expect(session(userConfig(), { agent: 'skyrim-e4b' }).written.tools.profile).toBe('full');

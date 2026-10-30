@@ -39,9 +39,10 @@ export const NOT_ALLOWED = ['deployProject', 'installMod', 'downloadNexusFile', 
 
 /**
  * Denied, since an eval runs unwatched: OpenClaw's shell, and the tools that reach a paired device — on the user's
- * machine, the PC itself, through its node.
+ * machine, the PC itself, through its node. And skill_workshop: a skill the agent saved in one run would change the
+ * runs after it, and a round measures one setup.
  */
-const DENIED_TOOLS = ['exec', 'process', 'nodes', 'dir_fetch', 'dir_list', 'file_fetch', 'file_write'];
+const DENIED_TOOLS = ['exec', 'process', 'nodes', 'dir_fetch', 'dir_list', 'file_fetch', 'file_write', 'skill_workshop'];
 
 /** The files of an agent's workspace OpenClaw puts into its prompt. */
 const WORKSPACE_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'IDENTITY.md', 'TOOLS.md'];
@@ -373,6 +374,9 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     for (const kept of Object.values(config.agents?.entries ?? {})) {
         if (Array.isArray(kept.tools?.allow)) kept.tools.allow = kept.tools.allow.filter(name => !config.tools.deny.includes(name));
     }
+    // Self-learning off too: its background review runs the model under test between the runs, on their transcripts.
+    const workshop = ((config.skills ??= {}).workshop ??= {});
+    workshop.autonomous = { ...workshop.autonomous, mode: 'off' };
     // Unset, the gateway filters no tool by profile and an agent's allow list decides; `agent exec` takes `coding` for
     // it, which leaves out every native plugin tool — the first probe of the plugin saw only OpenClaw's own.
     if (!config.tools.profile && !Object.values(config.agents?.entries ?? {}).some(kept => kept.tools?.profile)) {

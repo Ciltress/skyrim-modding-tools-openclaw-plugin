@@ -1,12 +1,11 @@
 {
-  "0": "OpenClaw Hooks and Tool-Call Facts",
+  "0": "The MCP Server Counterpart",
   "1": "Package Manifest",
   "2": "Setup Wizard and Muddy",
   "3": "Eval Tasks and Checks",
   "4": "ClawHub Staging and Build Scripts",
   "5": "Plugin Entry, Settings and Manifest",
   "6": "Eval OpenClaw Session",
-  "7": "SkyrimTools Tool Calls",
   "8": "Plugin, Muddy and the Instructions Hook",
   "9": "Text-Call and Announced-Step Check",
   "10": "Eval Record Readers",
@@ -21,8 +20,6 @@
   "19": "Eval Server Calls",
   "20": "Gateway Modes and the Eval",
   "21": "Eval Model Providers",
-  "22": "Build Check",
-  "23": "Write Guard Tests",
-  "24": "Write Guard",
+  "22": "Build Check, Write Guard and Registration",
   "25": "Eval Crash Tasks"
 }

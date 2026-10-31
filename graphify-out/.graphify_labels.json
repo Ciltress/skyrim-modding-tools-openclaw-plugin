@@ -1,5 +1,5 @@
 {
-  "0": "Build Check and Write Guard",
+  "0": "OpenClaw Hooks and Tool-Call Facts",
   "1": "Package Manifest",
   "2": "Setup Wizard and Muddy",
   "3": "Eval Tasks and Checks",
@@ -20,5 +20,9 @@
   "18": "Install and Configuration",
   "19": "Eval Server Calls",
   "20": "Gateway Modes and the Eval",
-  "21": "Eval Model Providers"
+  "21": "Eval Model Providers",
+  "22": "Build Check",
+  "23": "Write Guard Tests",
+  "24": "Write Guard",
+  "25": "Eval Crash Tasks"
 }

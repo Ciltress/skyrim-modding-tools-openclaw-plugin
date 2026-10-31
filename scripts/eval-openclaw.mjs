@@ -447,6 +447,50 @@ export function failureCodes(log) {
     return codes;
 }
 
+/** A `build` argument that asks for the build: true, or the text "true". */
+const sentTrue = value => value === true || String(value).trim().toLowerCase() === 'true';
+
+/**
+ * A recorded call that built and succeeded: buildProject, or editRecord sent with `build`, which builds after its
+ * change and answers that build (core v0.1.19, from round 75).
+ */
+export const buildSucceeded = call => !call.isError &&
+    (call.name === 'buildProject' || (call.name === 'editRecord' && sentTrue(call.args?.build)));
+
+/** OpenClaw's file tools: their answer names the file they wrote, "Successfully wrote 1074 bytes to <path>". */
+const FILE_TOOLS = ['write', 'edit', 'apply_patch'];
+
+/** The plugin's tools that change a project's record files when they succeed. */
+const CHANGING_TOOLS = ['addPatch', 'editRecord', 'moveRecord', 'deleteRecord', 'pullProject'];
+
+/**
+ * A recorded call that changed a project of the projects folder: a file tool whose answer says it wrote there, or one
+ * of the plugin's tools that change record files. editRecord sent with `build` changed it too where its build was
+ * refused: that message starts "Changed <file>: …" and goes on "Not built: …", past where the record cuts a long one.
+ */
+export function changedProject(call, projectsDir) {
+    const result = call.result ?? '';
+    if (FILE_TOOLS.includes(call.name)) {
+        return !call.isError && !/^No changes/i.test(result) && result.toLowerCase().includes(path.basename(projectsDir).toLowerCase());
+    }
+    if (call.isError) return call.name === 'editRecord' && /"error":\s*"Changed /.test(result);
+    return CHANGING_TOOLS.includes(call.name);
+}
+
+/**
+ * Built after the run's last change — the tools' rule for a delivered mod, "the buildProject after your last change
+ * answers success": a build succeeded, and no call changed a project after it. Until round 99 a build anywhere in the
+ * run counted: that round's sword #1 changed the sword after its last build and told the user it was built.
+ */
+export function builtAfterLastChange(calls, projectsDir) {
+    let built = false;
+    for (const call of calls) {
+        if (buildSucceeded(call)) built = true;
+        else if (changedProject(call, projectsDir)) built = false;
+    }
+    return built;
+}
+
 /**
  * One task through OpenClaw. Returns the calls in the record's shape, the final answer and how the session ended,
  * plus the proxy's per-request figures and what the plugin's hooks logged.

@@ -28,7 +28,8 @@
  * knows the game would ask for — stats, the vanilla thing it is like, the level — but no editor IDs; the checks stay
  * the same, so the two compare. sword+detailed is held, beside them, to the enchantment its prompt names: a new record
  * of the project, Flame Blade Burn, of 10 points (since round 78); and to the sword's value of 150 and charge of 500
- * (since round 88).
+ * (since round 88). A task that builds is built when a build succeeded after the run's last change, the delivery rule
+ * the tools give the model (since round 100; until then any build that succeeded).
  *
  * Nothing is deployed and nothing is installed: the tools that would are denied. The plugin's projects folder is a
  * temporary one, emptied before each run; the instance is only read.
@@ -54,7 +55,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
 import {
-    NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion, providerServer, runOpenClaw, startProxy, writeSessionConfig
+    builtAfterLastChange, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion, providerServer, runOpenClaw, startProxy,
+    writeSessionConfig
 } from './eval-openclaw.mjs';
 import { leftEscape, translatedValue } from './eval-yaml.mjs';
 
@@ -396,13 +398,6 @@ async function effectTexts(project, text) {
     return Promise.all(effectsOf(text).map(effect => recordAnywhere(project, effect)));
 }
 
-/**
- * A call that built and succeeded: buildProject, or editRecord sent with `build`, which builds after its change and
- * answers that build (core v0.1.19, from round 75).
- */
-const buildSucceeded = c => !c.isError &&
-    (c.name === 'buildProject' || (c.name === 'editRecord' && (c.args?.build === true || String(c.args?.build).trim().toLowerCase() === 'true')));
-
 /** A magic effect a fire resistance lowers: fire damage. */
 const FIRE = /^ResistValue:[ \t]*ResistFire[ \t]*\r?$/m;
 
@@ -432,9 +427,9 @@ async function flameBlade() {
     return { sword, enchantment: { formKey: own ? formKey : undefined, text }, effects: await effectTexts('FlameBlade', text), items };
 }
 
-/** Built: a build succeeded, and the project's build folder holds a plugin. */
+/** Built: a build succeeded after the run's last change, and the project's build folder holds a plugin. */
 const builtProject = (project, calls) =>
-    calls.some(buildSucceeded) &&
+    builtAfterLastChange(calls, projectsDir) &&
     filesUnder(path.join(projectsDir, project, 'build')).some(f => /\.es[pml]$/i.test(f));
 
 /** A number standing on its own: 7 in "damage 7." but not in "012EB7" or "7.5". */
@@ -494,11 +489,10 @@ const TASKS = [
         prompt: 'Make a patch mod called SteelSwordLight in which the Steel Sword weighs 5, and build it. Do not deploy it.',
         check: ({ calls }) => {
             const text = recordText('SteelSwordLight', truth.steelSword.formId) ?? '';
-            const built = filesUnder(path.join(projectsDir, 'SteelSwordLight', 'build')).some(f => /\.es[pml]$/i.test(f));
             return {
                 recordInProject: !!text,
                 weight5: /^\s+Weight:\s*5\s*$/m.test(text),
-                built: built && calls.some(buildSucceeded)
+                built: builtProject('SteelSwordLight', calls)
             };
         }
     },
@@ -620,10 +614,26 @@ const TASKS = [
 ];
 
 /**
+ * Crash Logger SSE's name for a log written at `time`, local time as the game has it, and its CRASH TIME line's.
+ * `crash-2026-10-30-06-13-38.log`, `2026-10-30 06:13:38`.
+ */
+function crashLogTime(time) {
+    const two = n => String(n).padStart(2, '0');
+    const day = `${time.getFullYear()}-${two(time.getMonth() + 1)}-${two(time.getDate())}`;
+    const clock = [time.getHours(), time.getMinutes(), time.getSeconds()].map(two);
+    return { name: `crash-${day}-${clock.join('-')}.log`, line: `${day} ${clock.join(':')}` };
+}
+
+/**
  * A "my game crashed" task. Its log — a crash made on purpose: an SKSE plugin writing through a null pointer, a logo
  * mesh linking a shader property as a child — is the only one in the run's crash-log folder, and its mod is enabled,
  * as it was when the game crashed; afterwards the mod is disabled again. Passed when the answer names the mod and a
  * fix for it, after reading the log, and the run changed nothing: the tools that would are denied, so trying is enough.
+ *
+ * The log is put there as written just before the run, its name and CRASH TIME 30 seconds before (that day's midnight
+ * at the latest): the task says the game just crashed, and a model asks for the log of the day or the minute it reads
+ * in its prompt. Under its own date, 2026-10-30, four to six crash runs a round asked for a log of the round's day,
+ * were refused and read the newest next (rounds 90–99).
  */
 function crashTask({ id, prompt, log, mod, named }) {
     /** Every mod's state and its plugins', as the mod manager has them. */
@@ -636,7 +646,12 @@ function crashTask({ id, prompt, log, mod, named }) {
         prompt,
         before: async () => {
             for (const entry of fs.readdirSync(crashLogDir)) fs.rmSync(path.join(crashLogDir, entry), { force: true });
-            fs.copyFileSync(path.join(root, 'scripts', 'eval-crash-logs', log), path.join(crashLogDir, log));
+            const now = new Date();
+            const crashed = new Date(Math.max(now.getTime() - 30_000, new Date(now).setHours(0, 0, 0, 0)));
+            const { name, line } = crashLogTime(crashed);
+            const text = fs.readFileSync(path.join(root, 'scripts', 'eval-crash-logs', log), 'utf8');
+            fs.writeFileSync(path.join(crashLogDir, name), text.replace(/^CRASH TIME: .*$/m, `CRASH TIME: ${line}`));
+            fs.utimesSync(path.join(crashLogDir, name), crashed, crashed);
             await callServerJson('enableMod', { mod });
             before = await modsState();
         },

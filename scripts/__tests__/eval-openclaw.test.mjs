@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { callRecord, failureCodes, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
+import { builtAfterLastChange, callRecord, failureCodes, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -252,5 +252,42 @@ describe('failureCodes', () => {
             '[tools] buildproject failed: Not built: 1 field(s) [code -32602] params={"project":"A"}'
         ].join('\n');
         expect(failureCodes(log)).toEqual(new Map([['buildproject', [-32602, -32602]], ['readrecord', [-32603]]]));
+    });
+});
+
+describe('builtAfterLastChange', () => {
+    const projects = 'C:\\Temp\\skyrim-eval-projects-5O57r5';
+    const file = `${projects}\\FlameBlade\\plugin\\Weapons\\FlameBlade.yaml`;
+    const write = { name: 'write', args: { path: 'Weapons/FlameBlade.yaml' }, isError: false, result: `Successfully wrote 1074 bytes to ${file}` };
+    const build = { name: 'buildProject', args: { project: 'FlameBlade' }, isError: false, result: '{"status":"built_with_warnings"}' };
+    const refused = { name: 'buildProject', args: { project: 'FlameBlade' }, isError: true, result: '[tool error] {"error": "Not built: …"}' };
+    const edit = (args, result, isError = false) => ({ name: 'editRecord', args: { project: 'FlameBlade', record: 'Weapons/FlameBlade.yaml', ...args }, isError, result });
+
+    it('takes a build that succeeded after the last change, as the delivery rule does, warnings and all', () => {
+        expect(builtAfterLastChange([write, refused, write, build], projects)).toBe(true);
+        expect(builtAfterLastChange([write, edit({ build: true }, '{"status":"success"}')], projects)).toBe(true);
+        expect(builtAfterLastChange([write, edit({ build: 'true' }, '{"status":"built_with_warnings"}')], projects)).toBe(true);
+        expect(builtAfterLastChange([write, refused], projects)).toBe(false);
+        expect(builtAfterLastChange([], projects)).toBe(false);
+    });
+
+    it('leaves a run unbuilt that changed its project after its last build: round 99\'s sword #1', () => {
+        const unbuilt = edit({ set: [{ path: 'BasicStats.Weight', value: 7 }] }, '{"status":"success","nextStep":"Run buildProject next"}');
+        expect(builtAfterLastChange([write, build, unbuilt], projects)).toBe(false);
+        expect(builtAfterLastChange([write, build, { name: 'addPatch', isError: false, result: '{"status":"success"}' }], projects)).toBe(false);
+        expect(builtAfterLastChange([write, build, { name: 'moveRecord', isError: false, result: '{}' }], projects)).toBe(false);
+        expect(builtAfterLastChange([write, build, { ...write, name: 'edit', result: `Successfully replaced 1 block(s) in ${file}` }], projects)).toBe(false);
+        // Its build refused after the change: the message the record cuts before "Not built".
+        const notBuilt = edit({ build: true }, `[tool error] {\n  "status": "error",\n  "tool": "editrecord",\n  "error": "Changed ${file.replace(/\\/g, '\\\\')}: BasicStats.Value…`, true);
+        expect(builtAfterLastChange([write, build, notBuilt], projects)).toBe(false);
+    });
+
+    it('counts no change where nothing was written to a project', () => {
+        const refusedEdit = edit({ set: [] }, '[tool error] {"error": "No record file \'Weapons/X.yaml\' in the project"}', true);
+        const same = { ...write, result: `No changes made to ${file}` };
+        const elsewhere = { ...write, result: 'Successfully wrote 10 bytes to C:\\Users\\me\\notes.md' };
+        const failed = { ...write, isError: true, result: '[tool error] {"error": "EACCES"}' };
+        const reads = [{ name: 'readRecord', isError: false, result: '{}' }, { name: 'read', isError: false, result: 'FormKey: …' }];
+        expect(builtAfterLastChange([write, build, refusedEdit, same, elsewhere, failed, ...reads], projects)).toBe(true);
     });
 });

@@ -3,9 +3,11 @@ import type { FinalizeRevision } from './buildCheck.js';
 /**
  * A call's opening tag in a model's own call syntax, written as words — `<tool_call>`, `<|tool_call>`, `<call>`,
  * `<tool_code>` — with the `call:` a model's tool-call tokens put before the name; or that `call:` alone at a line's
- * start, as Ollama passes on a call it could not parse, its tokens left out: `call:write{content:…}` (eval round 92).
+ * start, as Ollama passes on a call it could not parse, its tokens left out: `call:write{content:…}` (eval round 92); or
+ * such a tag with the call as its attributes, `<tool_call id="openclaw_tool_call" args={…}>` (eval round 100).
  */
-const CALL_TAG = /<\|?(?:tool_call|call|tool_code|function_call)\|?>\s*(?:call:)?|^[ \t]*call:(?=[A-Za-z_])/gm;
+const CALL_TAG = new RegExp(String.raw`<\|?(?:tool_call|call|tool_code|function_call)\|?>\s*(?:call:)?|^[ \t]*call:(?=[A-Za-z_])` +
+    String.raw`|(?<attributes><\|?(?:tool_call|call|tool_code|function_call)(?=\s+[A-Za-z_][\w-]*\s*=))`, 'gm');
 const NAME = /[A-Za-z_][\w-]*/y;
 /** The keys a call written as JSON names its tool under: `{"tool_name": "readSkill", "tool_args": {…}}`. */
 const NAME_KEYS = 'tool_name|tool|name|function|function_name|id';
@@ -39,7 +41,8 @@ interface WrittenCall {
  * run with nothing made, five times in eval rounds 65–76, no two alike: `<call>readSkill{skill:skyrim-modding-basics}</call>`
  * and `<tool_code>\nreadSkill{skill: "skyrim-modding-basics"}\n</tool_code>` (round 65), `<tool_call>readSkill{…}</tool_call>`
  * (round 69), `[Tool Call] {"tool_name": "readSkill", "tool_args": {…}}` and `openclaw_tool_call{id: "readSkill", args: {…}}`
- * (round 76). A call in a tag counts wherever it is; one of the agent's tools named with its arguments in braces or
+ * (round 76); once more in round 100, `<tool_call id="openclaw_tool_call" args={"id": "readSkill", …}>`. A call in a tag
+ * counts wherever it is; one of the agent's tools named with its arguments in braces or
  * parentheses, or as a JSON field's value, counts where the answer ends on it — and is asked for as a call meant to run,
  * so an answer that shows one to the user can stand.
  *
@@ -104,6 +107,7 @@ export function announcedStep(text: string): string | undefined {
 /** The first call written in a call tag; else the last of the agent's tools written as a call, where the answer ends on it. */
 export function writtenCall(text: string, tools: readonly string[]): WrittenCall | undefined {
     for (const tag of text.matchAll(CALL_TAG)) {
+        if (tag.groups?.attributes) return { text: flat(text.slice(tag.index, tagEnd(text, tag.index))), tagged: true };
         NAME.lastIndex = tag.index + tag[0].length;
         const name = NAME.exec(text);
         if (!name) continue;
@@ -137,6 +141,18 @@ function closing(text: string, open: number): number {
             for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++;
         } else if (c === '{' || c === '(' || c === '[') depth++;
         else if ((c === '}' || c === ')' || c === ']') && --depth === 0) return i + 1;
+    }
+    return text.length;
+}
+
+/** Past the `>` that closes the tag opened at `at` — its attributes' quotes and brackets skipped; the text's end where none does. */
+function tagEnd(text: string, at: number): number {
+    for (let i = at + 1; i < text.length; i++) {
+        const c = text[i];
+        if (c === '"' || c === '\'') {
+            for (i++; i < text.length && text[i] !== c; i++) if (text[i] === '\\') i++;
+        } else if (c === '{' || c === '(' || c === '[') i = closing(text, i) - 1;
+        else if (c === '>') return i + 1;
     }
     return text.length;
 }

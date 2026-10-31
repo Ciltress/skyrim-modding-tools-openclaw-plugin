@@ -36,6 +36,19 @@ describe('textCallRevision', () => {
         expect(textCallRevision(code, 'r', TOOLS)!.reason).toBe('The answer wrote a tool call as text: readSkill{skill: "skyrim-modding-basics"}.');
     });
 
+    it('reads a call tag that carries the call as its attributes', () => {
+        // Eval round 100's spell #5, the whole answer.
+        const answer = 'I will first consult the relevant skill documentation to ensure I follow the correct procedures for creating ' +
+            'a new mod and adding a Destruction spell. I will start with the basics, then move to magic.\n\n' +
+            '<tool_call id="openclaw_tool_call" args={"id": "readSkill", "skill": "skyrim-modding-basics"}>';
+        const revision = textCallRevision(answer, 'r', TOOLS)!;
+        expect(revision.reason)
+            .toBe('The answer wrote a tool call as text: <tool_call id="openclaw_tool_call" args={"id": "readSkill", "skill": "skyrim-modding-basics"}>.');
+        expect(revision.retry.instruction).toMatch(/Make it as a tool call now, then go on with the task\.$/);
+        expect(textCallRevision('Reading it.\n<tool_call name="readSkill" args=\'{"skill": "a > b"}\'/>\nThen the magic skill.', 'r', TOOLS)!.reason)
+            .toBe('The answer wrote a tool call as text: <tool_call name="readSkill" args=\'{"skill": "a > b"}\'/>.');
+    });
+
     it('reads an answer that ends on one of the agent\'s tools written as a call, and asks for it as a call meant to run', () => {
         // Eval round 76's spell+detailed #1 and npc #1, the whole answers.
         const json = 'I will start by consulting the relevant skills to ensure I follow the correct procedures for creating a ' +

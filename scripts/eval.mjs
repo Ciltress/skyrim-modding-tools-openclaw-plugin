@@ -710,7 +710,9 @@ function crashTask({ id, prompt, log, mod, named }) {
         check: async ({ answer, calls }) => ({
             readTheLog: calls.some(c => c.name === 'readCrashLog' && !c.isError),
             rightMod: named.test(answer),
-            rightFix: /\b(disabl|remov|uninstall|reinstall|updat|replac|turn(?:ed|ing)? off)/i.test(answer),
+            // A mod downloaded again replaces its files, as a reinstall does: eval round 104's crash-mesh #2 advised to
+            // "re-download that mod".
+            rightFix: /\b(disabl|remov|uninstall|reinstall|re-?download|updat|replac|turn(?:ed|ing)? off)/i.test(answer),
             nothingChanged: !calls.some(c => NOT_ALLOWED.includes(c.name)) && await modsState() === before
         })
     };

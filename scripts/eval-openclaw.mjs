@@ -505,6 +505,17 @@ export function levelFollowsPlayer(text, min, max) {
 }
 
 /**
+ * A record's model as its file names it, below the Meshes folder — `Model:` then `File:` one deeper, or `Model: {File: …}`
+ * — its quotes and a trailing comment left out; undefined where the record has none.
+ */
+export function modelOf(text) {
+    const nested = /^Model:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]+File:[ \t]*(.+?)[ \t]*\r?$/m.exec(text)?.[1];
+    const flow = /^Model:[ \t]*\{[^}\r\n]*?\bFile:[ \t]*([^,}\r\n]+?)[ \t]*[,}]/m.exec(text)?.[1];
+    const file = (nested ?? flow)?.replace(/[ \t]+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
+    return file || undefined;
+}
+
+/**
  * The damage an effect item deals as the game deals it: its magnitude once, or each second of its duration where it
  * has one and its magic effect is not flagged NoDuration. Round 103's sword+detailed #5 cast a trap's fire at 10 for 2 s
  * — 20 in all — and passed a check of its magnitude alone.

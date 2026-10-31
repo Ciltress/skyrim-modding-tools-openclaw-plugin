@@ -29,7 +29,8 @@
  * the same, so the two compare. sword+detailed is held, beside them, to the enchantment its prompt names: a new record
  * of the project, Flame Blade Burn, of 10 points (since round 78); and to the sword's value of 150 and charge of 500
  * (since round 88). A task that builds is built when a build succeeded after the run's last change, the delivery rule
- * the tools give the model (since round 100; until then any build that succeeded).
+ * the tools give the model (since round 100; until then any build that succeeded). The sword and the note are drawn by
+ * the game: their model a mesh it has (since round 106).
  *
  * Nothing is deployed and nothing is installed: the tools that would are denied. The plugin's projects folder is a
  * temporary one, emptied before each run; the instance is only read.
@@ -55,7 +56,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
 import {
-    builtAfterLastChange, dealtDamage, levelFollowsPlayer, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
+    builtAfterLastChange, dealtDamage, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
     providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
 import { leftEscape, translatedValue } from './eval-yaml.mjs';
@@ -453,6 +454,20 @@ async function flameBlade() {
     return { sword, enchantment: { formKey: own ? formKey : undefined, text }, effects: await effectTexts('FlameBlade', text), items };
 }
 
+/**
+ * Whether the game draws the record: its model a mesh the game has — loose in a mod or in an archive of the load order, as
+ * the core finds files — or one in the project's assets, which deploy copies into the mod. Round 105's sword #1, #3 and #5
+ * built Flame Blades on mesh paths of their own making, which the game draws nothing for, and passed.
+ */
+async function modelInGame(project, text) {
+    const model = modelOf(text);
+    if (!model) return false;
+    if ((await backend.findGameFiles([model]))[model]) return true;
+    const asset = path.join('meshes', ...model.split(/[\\/]+/)).toLowerCase();
+    const assets = path.join(projectsDir, project, 'assets');
+    return filesUnder(assets).some(file => path.relative(assets, file).toLowerCase() === asset);
+}
+
 /** Built: a build succeeded after the run's last change, and the project's build folder holds a plugin. */
 const builtProject = (project, calls) =>
     builtAfterLastChange(calls, projectsDir) &&
@@ -544,6 +559,7 @@ const TASKS = [
                 playable: !!sword && !/^[ \t]+-[ \t]*(?:NonPlayable|BoundWeapon)[ \t]*\r?$|^[ \t]*Flags:[ \t]*\[[^\]\r\n]*\b(?:NonPlayable|BoundWeapon)\b/m.test(sword.text),
                 fireEnchantment: effects.some(text => FIRE.test(text)),
                 burnsVisibly: effects.some(text => FIRE.test(text) && BURN.test(text)),
+                modelInGame: !!sword && await modelInGame('FlameBlade', sword.text),
                 built: builtProject('FlameBlade', calls)
             };
         },
@@ -635,12 +651,14 @@ const TASKS = [
         detailed: 'Make a new mod called MavenNote with a new note named "Maven\'s Warning". Make it like Maven\'s ' +
             'note "Note From Maven" — the same model, sounds and keywords — with exactly the same text, word for word ' +
             'and with its formatting. Build it, but do not deploy it.',
-        check: ({ calls }) => {
+        check: async ({ calls }) => {
             const note = newRecords('MavenNote', 'books')
                 .find(r => translatedValue(r.text, 'Name')?.toLowerCase() === "maven's warning");
             return {
                 newNote: !!note,
                 textCopied: !!note && translatedValue(note.text, 'BookText') === truth.mavenNote.text,
+                // Round 98's note #3 built on Clutter\Books\NotePlaceholder.nif, which the game does not have.
+                modelInGame: !!note && await modelInGame('MavenNote', note.text),
                 built: builtProject('MavenNote', calls)
             };
         }

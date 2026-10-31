@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, levelFollowsPlayer, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
+import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, levelFollowsPlayer, modelOf, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -307,6 +307,21 @@ describe('levelFollowsPlayer', () => {
         expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: NpcLevel, Level: 10}\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
         expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 5\n  CalcMaxLevel: 25\n'), 5, 30)).toBe(false);
         expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 50\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+    });
+});
+
+describe('modelOf', () => {
+    it('reads the model below Model, in a block or a flow mapping, without quotes or a comment', () => {
+        expect(modelOf('EditorID: FlameBlade\nModel:\n  File: Weapons\\Iron\\LongSword.nif\n  Data: 0x0200\nEquipmentType: RightHand\n'))
+            .toBe('Weapons\\Iron\\LongSword.nif');
+        // Round 105's sword #1 wrote its made-up model with a comment.
+        expect(modelOf('Model:\n  File: Weapons\\FlameBlade.nif # Assuming a placeholder model for now\n')).toBe('Weapons\\FlameBlade.nif');
+        expect(modelOf("Model: {File: 'Clutter\\Books\\Note01.nif', Data: 0x02}\n")).toBe('Clutter\\Books\\Note01.nif');
+    });
+
+    it('reads no model from a record without one, or from another field\'s File', () => {
+        expect(modelOf('EditorID: FlameBlade\nName:\n  Value: Flame Blade\n')).toBeUndefined();
+        expect(modelOf('EditorID: X\nFirstPersonModel: 1stPersonIronSword\nInventoryArt:\n  File: x.nif\n')).toBeUndefined();
     });
 });
 

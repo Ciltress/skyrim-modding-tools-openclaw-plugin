@@ -55,8 +55,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
 import {
-    builtAfterLastChange, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion, providerServer, runOpenClaw, startProxy,
-    writeSessionConfig
+    builtAfterLastChange, dealtDamage, levelFollowsPlayer, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
+    providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
 import { leftEscape, translatedValue } from './eval-yaml.mjs';
 
@@ -268,6 +268,8 @@ const truth = {
     steelSword: await weapon('SteelSword'),
     nordRace: (await callServerJson('findRecords', { records: ['NordRace'], limit: 1 })).records[0]?.formId
         ?? fail('the instance has no NordRace'),
+    femaleNordVoice: (await callServerJson('findRecords', { records: ['FemaleNord'], limit: 1 })).records[0]?.formId
+        ?? fail('the instance has no FemaleNord voice'),
     // A note whose text has line breaks and quotes, and whose model path has backslashes: what a copy
     // has to carry over exactly.
     mavenNote: await (async () => {
@@ -360,6 +362,19 @@ async function linkTarget(project, link) {
     }
 }
 
+/** The editor ID of the record a link names: the project's own, or the load order's. */
+async function editorIdOf(project, link) {
+    const formKey = await linkTarget(project, link);
+    if (!formKey) return undefined;
+    const own = projectRecords(project).records.find(r => r.formKey?.toLowerCase() === formKey.toLowerCase());
+    if (own) return /^EditorID:[ \t]*(\S+)/m.exec(own.text)?.[1];
+    try {
+        return (await callServerJson('findRecords', { records: [formKey], limit: 1 })).records[0]?.editorId ?? undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 /** A record's text wherever it is: written in the project, or in the load order (read through the plugin's tools). */
 async function recordAnywhere(project, link) {
     const formKey = await linkTarget(project, link);
@@ -401,14 +416,25 @@ async function effectTexts(project, text) {
 /** A magic effect a fire resistance lowers: fire damage. */
 const FIRE = /^ResistValue:[ \t]*ResistFire[ \t]*\r?$/m;
 
-/** Each item of a record's Effects list: the magic effect it names, and its Magnitude (NaN where it has none). */
+/** Each item of a record's Effects list: the magic effect it names, its Magnitude (NaN where it has none) and Duration. */
 function effectItems(text) {
     const list = /^Effects:[ \t]*\r?\n((?:[ \t]*-.*\r?\n|[ \t]+.*\r?\n)*)/m.exec(`${text}\n`)?.[1] ?? '';
     const indent = /^([ \t]*)-/.exec(list)?.[1] ?? '';
     return list.split(new RegExp(`^${indent}-`, 'm')).slice(1)
-        .map(item => ({ effect: /BaseEffect:[ \t]*([^\s#]+)/.exec(item)?.[1], magnitude: Number(/Magnitude:[ \t]*(-?[\d.]+)/.exec(item)?.[1]) }))
+        .map(item => ({
+            effect: /BaseEffect:[ \t]*([^\s#]+)/.exec(item)?.[1],
+            magnitude: Number(/Magnitude:[ \t]*(-?[\d.]+)/.exec(item)?.[1]),
+            duration: Number(/Duration:[ \t]*(-?[\d.]+)/.exec(item)?.[1] ?? 0)
+        }))
         .filter(item => item.effect);
 }
+
+/**
+ * A fire effect that shows its burn where it hits: the game's weapon fire, EnchFireDamageFFContact, has FireFXShader.
+ * Round 103's sword+detailed #5 cast a Dark Brotherhood trap's Heavy Fire Damage, Painless and with no shader, and
+ * passed: in game the sword burned unseen.
+ */
+const BURN = /^HitShader:[ \t]*\S/m;
 
 /**
  * The sword task's records: the project's new sword named Flame Blade; the enchantment it names — its `formKey` where
@@ -422,8 +448,8 @@ async function flameBlade() {
     const formKey = await linkTarget('FlameBlade', link);
     const own = formKey && projectRecords('FlameBlade').records.find(r => r.formKey?.toLowerCase() === formKey.toLowerCase());
     const text = await recordAnywhere('FlameBlade', link);
-    const items = await Promise.all(effectItems(text).map(async ({ effect, magnitude }) =>
-        ({ text: await recordAnywhere('FlameBlade', effect), magnitude })));
+    const items = await Promise.all(effectItems(text).map(async ({ effect, magnitude, duration }) =>
+        ({ text: await recordAnywhere('FlameBlade', effect), magnitude, duration })));
     return { sword, enchantment: { formKey: own ? formKey : undefined, text }, effects: await effectTexts('FlameBlade', text), items };
 }
 
@@ -517,6 +543,7 @@ const TASKS = [
                 // NonPlayable and BoundWeapon flags — a conjured weapon, kept out of the inventory — and 9 passed without this.
                 playable: !!sword && !/^[ \t]+-[ \t]*(?:NonPlayable|BoundWeapon)[ \t]*\r?$|^[ \t]*Flags:[ \t]*\[[^\]\r\n]*\b(?:NonPlayable|BoundWeapon)\b/m.test(sword.text),
                 fireEnchantment: effects.some(text => FIRE.test(text)),
+                burnsVisibly: effects.some(text => FIRE.test(text) && BURN.test(text)),
                 built: builtProject('FlameBlade', calls)
             };
         },
@@ -533,7 +560,8 @@ const TASKS = [
                 ...await TASKS.find(t => t.id === 'sword').check({ calls }),
                 ownEnchantment: !!enchantment?.formKey && !!plugin && enchantment.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`),
                 enchantmentNamed: !!enchantment && /^flame blade burn$/i.test(nameOf(enchantment.text)),
-                tenPoints: items.some(({ text, magnitude }) => FIRE.test(text) && magnitude === 10),
+                // As the game deals it: round 103's sword+detailed #5 burned 10 a second for 2 s and passed on its magnitude.
+                tenPoints: items.some(({ text, magnitude, duration }) => FIRE.test(text) && dealtDamage(magnitude, duration, text) === 10),
                 valueOf150: /^[ \t]+Value:[ \t]*(['"]?)150\1[ \t]*\r?$/m.test(basicStats),
                 chargeOf500: !!sword && /^EnchantmentAmount:[ \t]*(['"]?)500\1[ \t]*\r?$/m.test(sword.text)
             };
@@ -574,6 +602,27 @@ const TASKS = [
                 nord: traits.length > 0 && traits.every(t => t.race?.toLowerCase() === truth.nordRace.toLowerCase()),
                 female: traits.length > 0 && traits.every(t => t.female),
                 built: builtProject('HildaTheNord', calls)
+            };
+        },
+        // What the detailed prompt adds, beside those: round 103's npc+detailed #1 and #5 wrote CalcMinLevel 5 and
+        // CalcMaxLevel 30 with no Level line — a fixed level of 0 — answered that her level follows the player's, and passed.
+        detailedCheck: async ({ calls }) => {
+            const project = 'HildaTheNord';
+            const text = newRecords(project, 'npcs').find(r => /^hilda$/i.test(nameOf(r.text)))?.text ?? '';
+            const link = field => new RegExp(`^${field}:[ \\t]*([^\\s#]+)`, 'm').exec(text)?.[1];
+            // Iron armor as she wears it: her outfit — named so, or holding iron armor or a list of it — or her inventory.
+            const outfit = link('DefaultOutfit');
+            const outfitText = outfit ? await recordAnywhere(project, outfit) : '';
+            const outfitItems = [...(/^Items:[ \t]*\r?\n((?:[ \t]*-.*\r?\n?)*)/m.exec(outfitText)?.[1] ?? '').matchAll(/-[ \t]*([^\s#]+)/g)].map(m => m[1]);
+            const inventory = [...text.matchAll(/^[ \t]+Item:[ \t]*([^\s#{]+)/gm)].map(m => m[1]);
+            const worn = await Promise.all([outfit, ...outfitItems, ...inventory].filter(Boolean).map(l => editorIdOf(project, l)));
+            return {
+                ...await TASKS.find(t => t.id === 'npc').check({ calls }),
+                levelFollowsPlayer: levelFollowsPlayer(text, 5, 30),
+                nordWomanVoice: (await linkTarget(project, link('Voice')))?.toLowerCase() === truth.femaleNordVoice.toLowerCase(),
+                // A class of the one-handed: CombatWarrior1H, GuardOrc1H, Vigilant1hMeleeClass.
+                oneHandedWarrior: /1H|OneHand/i.test(await editorIdOf(project, link('Class')) ?? ''),
+                ironArmor: worn.some(id => /ArmorIron/i.test(id ?? ''))
             };
         }
     },

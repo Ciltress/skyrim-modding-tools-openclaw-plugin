@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { builtAfterLastChange, callRecord, failureCodes, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
+import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, levelFollowsPlayer, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -289,5 +289,40 @@ describe('builtAfterLastChange', () => {
         const failed = { ...write, isError: true, result: '[tool error] {"error": "EACCES"}' };
         const reads = [{ name: 'readRecord', isError: false, result: '{}' }, { name: 'read', isError: false, result: 'FormKey: …' }];
         expect(builtAfterLastChange([write, build, refusedEdit, same, elsewhere, failed, ...reads], projects)).toBe(true);
+    });
+});
+
+describe('levelFollowsPlayer', () => {
+    const npc = level => `EditorID: Hilda\nConfiguration:\n  Flags:\n  - Female\n${level}  SpeedMultiplier: 100\nRace: NordRace\n`;
+
+    it('reads a level that follows the player\'s between two, in a flow or a block mapping', () => {
+        expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(true);
+        expect(levelFollowsPlayer(npc('  CalcMinLevel: 5\n  CalcMaxLevel: 30\n  Level:\n    MutagenObjectType: PcLevelMult\n    LevelMult: 1\n'), 5, 30)).toBe(true);
+        expect(levelFollowsPlayer(npc("  Level: { LevelMult: 1, MutagenObjectType: PcLevelMult }\n  CalcMinLevel: '5'\n  CalcMaxLevel: 30\n"), 5, 30)).toBe(true);
+    });
+
+    it('refuses the bounds beside no Level line or a fixed one, and other bounds', () => {
+        // Round 103's npc+detailed #1 and #5: a fixed level of 0, the bounds unread.
+        expect(levelFollowsPlayer(npc('  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+        expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: NpcLevel, Level: 10}\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+        expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 5\n  CalcMaxLevel: 25\n'), 5, 30)).toBe(false);
+        expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 50\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+    });
+});
+
+describe('dealtDamage', () => {
+    const effect = flags => `EditorID: SomeFire\nFlags:\n${flags.map(f => `- ${f}\n`).join('')}ResistValue: ResistFire\n`;
+
+    it('deals the magnitude once with no duration, or where the effect has none', () => {
+        expect(dealtDamage(10, 0, effect(['Hostile', 'Detrimental']))).toBe(10);
+        expect(dealtDamage(10, Number.NaN, effect(['Hostile']))).toBe(10);
+        expect(dealtDamage(10, 5, effect(['Hostile', 'NoDuration']))).toBe(10);
+        expect(dealtDamage(10, 5, 'Flags: [Hostile, NoDuration]\n')).toBe(10);
+    });
+
+    it('deals it each second of a duration', () => {
+        // Round 103's sword+detailed #5: a trap's fire at 10 for 2 s.
+        expect(dealtDamage(10, 2, effect(['Hostile', 'Detrimental', 'Painless', 'NoHitEffect']))).toBe(20);
+        expect(dealtDamage(10, 1, effect(['Hostile']))).toBe(10);
     });
 });

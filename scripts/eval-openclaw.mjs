@@ -491,6 +491,30 @@ export function builtAfterLastChange(calls, projectsDir) {
     return built;
 }
 
+/** A field's number at any depth, quoted or not: `  CalcMinLevel: 5`, `CalcMinLevel: '5'`. */
+const numberOf = (text, field) => Number(new RegExp(`^[ \\t]*${field}:[ \\t]*(['"]?)(-?[\\d.]+)\\1[ \\t]*\\r?$`, 'm').exec(text)?.[2]);
+
+/**
+ * Whether an NPC's text makes its level follow the player's between two levels: its Level a PcLevelMult, its
+ * CalcMinLevel and CalcMaxLevel those two. Round 103's npc+detailed #1 and #5 wrote the two bounds and no Level line —
+ * a fixed level of 0, the bounds unread — and passed, the task's level unchecked.
+ */
+export function levelFollowsPlayer(text, min, max) {
+    return /^[ \t]*(?:Level:[ \t]*\{[^}\r\n]*)?MutagenObjectType:[ \t]*PcLevelMult\b/m.test(text)
+        && numberOf(text, 'CalcMinLevel') === min && numberOf(text, 'CalcMaxLevel') === max;
+}
+
+/**
+ * The damage an effect item deals as the game deals it: its magnitude once, or each second of its duration where it
+ * has one and its magic effect is not flagged NoDuration. Round 103's sword+detailed #5 cast a trap's fire at 10 for 2 s
+ * — 20 in all — and passed a check of its magnitude alone.
+ */
+export function dealtDamage(magnitude, duration, effectText) {
+    // A magic effect's flags are at the margin, `Flags:` then `- NoDuration`.
+    const noDuration = /^[ \t]*-[ \t]*NoDuration[ \t]*\r?$/m.test(effectText) || /Flags:[ \t]*\[[^\]]*\bNoDuration\b/.test(effectText);
+    return duration > 0 && !noDuration ? magnitude * duration : magnitude;
+}
+
 /**
  * One task through OpenClaw. Returns the calls in the record's shape, the final answer and how the session ended,
  * plus the proxy's per-request figures and what the plugin's hooks logged.

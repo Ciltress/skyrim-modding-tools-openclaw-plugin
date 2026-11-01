@@ -46,7 +46,7 @@
     }
   },
   "dependencies": {
-    "skyrim-modding-tools-core": "github:Ciltress/skyrim-modding-tools-core#v0.2.32"
+    "skyrim-modding-tools-core": "github:Ciltress/skyrim-modding-tools-core#v0.2.33"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -74,6 +74,6 @@
     }
   },
   "allowScripts": {
-    "github:Ciltress/skyrim-modding-tools-core#9c12dbf7dcd3f7f3f80f0e74b4ec1f259439989a": true
+    "github:Ciltress/skyrim-modding-tools-core#bf32cd0db38ac008509afd6ca8d066fbf15bbee9": true
   }
 }

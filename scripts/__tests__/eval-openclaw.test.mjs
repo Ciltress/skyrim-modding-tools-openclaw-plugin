@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, levelFollowsPlayer, modelOf, providerServer, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
+import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, levelFollowsPlayer, modelOf, providerServer, runPhases, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -339,5 +339,18 @@ describe('dealtDamage', () => {
         // Round 103's sword+detailed #5: a trap's fire at 10 for 2 s.
         expect(dealtDamage(10, 2, effect(['Hostile', 'Detrimental', 'Painless', 'NoHitEffect']))).toBe(20);
         expect(dealtDamage(10, 1, effect(['Hostile']))).toBe(10);
+    });
+});
+
+describe('runPhases', () => {
+    it('splits the time outside the turns into the start, between the turns, the exit and the removal', () => {
+        // Spawned at 0; turns at 4–6 s and 9–10 s, a call between them; closed at 25 s, removed at 26.5 s.
+        const requests = [{ at: 4000, ms: 2000 }, { at: 9000, ms: 1000 }];
+        expect(runPhases({ spawned: 0, requests, closed: 25_000, removed: 26_500 }))
+            .toEqual({ start: 4, between: 3, exit: 15, cleanup: 1.5 });
+    });
+
+    it('gives a run with no answered request its removal alone', () => {
+        expect(runPhases({ spawned: 0, requests: [{ at: 5000, ms: null }], closed: 8000, removed: 8200 })).toEqual({ cleanup: 0.2 });
     });
 });

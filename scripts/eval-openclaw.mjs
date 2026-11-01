@@ -178,7 +178,7 @@ export async function startProxy(server, api = 'ollama') {
             try { body = raw.length ? JSON.parse(raw.toString('utf8')) : null; } catch { /* not JSON */ }
             const system = (body?.messages ?? []).filter(m => m.role === 'system').map(m => m.content ?? '').join('');
             const entry = {
-                url: req.url, model: body?.model, body,
+                url: req.url, model: body?.model, body, at: started,
                 tools: body?.tools?.length ?? 0,
                 toolNames: (body?.tools ?? []).map(t => t.function?.name),
                 toolsBytes: body?.tools ? Buffer.byteLength(JSON.stringify(body.tools)) : 0,
@@ -527,8 +527,28 @@ export function dealtDamage(magnitude, duration, effectText) {
 }
 
 /**
+ * Where a run's seconds went outside the model's turns, in seconds: OpenClaw's start to its first request, the calls and
+ * hooks between the turns, its exit after the last answer, and the run's state folder removed. Eval round 106's runs
+ * took 9–15 s more than round 105's in every authoring task, and nothing the record held told where. `requests` are the
+ * conversation's, each with `at` (its start, ms) and `ms`; a run with none has its removal alone.
+ */
+export function runPhases({ spawned, requests, closed, removed }) {
+    const seconds = ms => Math.round(ms / 100) / 10;
+    const answered = requests.filter(r => r.ms !== null && r.ms !== undefined);
+    if (!answered.length) return { cleanup: seconds(removed - closed) };
+    const firstAt = Math.min(...answered.map(r => r.at));
+    const lastEnd = Math.max(...answered.map(r => r.at + r.ms));
+    return {
+        start: seconds(firstAt - spawned),
+        between: seconds(lastEnd - firstAt - answered.reduce((sum, r) => sum + r.ms, 0)),
+        exit: seconds(closed - lastEnd),
+        cleanup: seconds(removed - closed)
+    };
+}
+
+/**
  * One task through OpenClaw. Returns the calls in the record's shape, the final answer and how the session ended,
- * plus the proxy's per-request figures and what the plugin's hooks logged.
+ * plus the proxy's per-request figures, where the time went outside the turns, and what the plugin's hooks logged.
  */
 export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, cwd, configFile, workspaceFiles = [], proxy, toolNames, instructionsLine, maxTurns, timeoutMs, thinking }) {
     proxy.log.length = 0;
@@ -548,6 +568,7 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
         '--timeout', String(Math.ceil(timeoutMs / 1000)),
         ...(thinking ? ['--thinking', thinking] : [])
     ];
+    const spawned = Date.now();
     const child = spawn(process.execPath, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
@@ -560,10 +581,12 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
     // OpenClaw's own --timeout ends the run first; this is for a run that does not end.
     const timer = setTimeout(() => { timedOut = true; killTree(child); }, timeoutMs + 60_000);
     const exitCode = await new Promise(resolve => child.on('close', resolve));
+    const closed = Date.now();
     clearTimeout(timer);
     proxy.limit = Infinity;
     proxy.onLimit = null;
     try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); } catch { /* left in the temp folder */ }
+    const removed = Date.now();
 
     let envelope = null;
     try { envelope = JSON.parse(stdout.slice(stdout.indexOf('{'))); } catch { /* no envelope */ }
@@ -626,6 +649,7 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
         answer: envelope?.final || last?.content || '',
         stop,
         turnStats,
+        phases: runPhases({ spawned, requests: main, closed, removed }),
         client: {
             firstPrompt: first ? {
                 tools: first.tools, toolsBytes: first.toolsBytes, systemChars: first.systemChars,

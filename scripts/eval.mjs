@@ -803,7 +803,8 @@ async function runTask(task, run) {
 }
 
 /** A run's record: the checks and the counts. */
-async function resultOf(task, run, { answer, calls, stop, turns, started, client }) {
+async function resultOf(task, run, { answer, calls, stop, turns, started, phases, client }) {
+    const checking = Date.now();
     const checks = stop === 'answered' || stop === 'maxTurns'
         ? await task.check({ answer, calls })
         : {};
@@ -816,6 +817,7 @@ async function resultOf(task, run, { answer, calls, stop, turns, started, client
         checks.noEscapesCopied = escapes.length === 0;
         checks.noUnchangedCopy = copies.length === 0;
     }
+    const checked = Date.now();
     return {
         task: task.id,
         run,
@@ -834,6 +836,8 @@ async function resultOf(task, run, { answer, calls, stop, turns, started, client
         maxPromptTokens: Math.max(0, ...turns.map(t => t.promptTokens)),
         outputTokens: turns.reduce((sum, t) => sum + t.outputTokens, 0),
         seconds: Math.round((Date.now() - started) / 100) / 10,
+        // The seconds outside the model's turns, OpenClaw's (runPhases) and the eval's checks.
+        phases: { ...phases, checks: Math.round((checked - checking) / 100) / 10 },
         answer: answer.length > 1500 ? `${answer.slice(0, 1500)}…` : answer,
         ...(escapes.length ? { escapes } : {}),
         ...(client ? { client } : {}),
@@ -971,6 +975,20 @@ function measuredBuild() {
     return `${commit}${git(['status', '--porcelain', '--untracked-files=no']) ? ' + uncommitted changes' : ''}, core v${core}`;
 }
 
+/** A run's phases outside the model's turns (runPhases, and the eval's checks), as the record names them. */
+const PHASES = [
+    ['start', "for OpenClaw's start"], ['between', 'between the turns'], ['exit', 'for its exit'],
+    ['cleanup', 'to remove its state folder'], ['checks', "for the eval's checks"]
+];
+
+/** The mean of each phase over the runs that have it. */
+function meanPhases(runs) {
+    return Object.fromEntries(PHASES.map(([key]) => {
+        const values = runs.map(r => r.phases?.[key]).filter(v => typeof v === 'number');
+        return [key, values.length ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length * 10) / 10 : null];
+    }));
+}
+
 const allTurns = results.flatMap(r => r.turnStats);
 // The session's first turn loads the model; it says nothing about a turn's cost.
 const laterTurns = allTurns.slice(1);
@@ -1001,7 +1019,8 @@ const openClawSummary = (() => {
         buildCheckAsked: results.filter(r => r.client?.buildCheckAsked > 0).length,
         buildCheckDropped: sum('buildCheckDropped'),
         textCallAsked: results.filter(r => r.client?.textCallAsked > 0).length,
-        announcedAsked: results.filter(r => r.client?.announcedAsked > 0).length
+        announcedAsked: results.filter(r => r.client?.announcedAsked > 0).length,
+        phases: meanPhases(results)
     };
 })();
 const first = openClawSummary.firstPrompt;
@@ -1076,7 +1095,8 @@ const entry = [
     `${openClawSummary.sideRequests} side requests; the build check asked for a build in ${openClawSummary.buildCheckAsked} ` +
     `runs, the text-call check asked for a call in ${openClawSummary.textCallAsked}, the announced-step check for its step ` +
     `in ${openClawSummary.announcedAsked}, and OpenClaw dropped ` +
-    `${openClawSummary.buildCheckDropped} of those passes.`,
+    `${openClawSummary.buildCheckDropped} of those passes. Outside the turns a run took on average ` +
+    `${PHASES.map(([key, name]) => `${openClawSummary.phases[key] ?? '?'} s ${name}`).join(', ')}.`,
     '',
     '| task | passed | turns | calls | invalid arguments | other errors | largest prompt (tokens) | seconds |',
     '|---|---|---|---|---|---|---|---|',

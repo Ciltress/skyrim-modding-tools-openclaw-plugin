@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, levelFollowsPlayer, modelOf, providerServer, runPhases, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
+import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, firstPersonModelOf, levelFollowsPlayer, modelOf, providerServer, runPhases, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -352,5 +352,19 @@ describe('runPhases', () => {
 
     it('gives a run with no answered request its removal alone', () => {
         expect(runPhases({ spawned: 0, requests: [{ at: 5000, ms: null }], closed: 8000, removed: 8200 })).toEqual({ cleanup: 0.2 });
+    });
+});
+
+describe('firstPersonModelOf', () => {
+    it('reads the FirstPersonModel a weapon names, by FormID or editor ID, without its comment or quotes', () => {
+        expect(firstPersonModelOf('EditorID: X\nFirstPersonModel: 036BB0:Skyrim.esm  # 1stPersonIronSword\n')).toBe('036BB0:Skyrim.esm');
+        expect(firstPersonModelOf('FirstPersonModel: 1stPersonIronSword\r\nBasicStats:\r\n')).toBe('1stPersonIronSword');
+        expect(firstPersonModelOf("FirstPersonModel: '1stPersonIronSword'\n")).toBe('1stPersonIronSword');
+    });
+
+    it('reads none from a weapon without the line, or with one naming nothing', () => {
+        expect(firstPersonModelOf('EditorID: X\nModel:\n  File: Weapons\\Iron\\LongSword.nif\n')).toBeUndefined();
+        expect(firstPersonModelOf('FirstPersonModel: Null\n')).toBeUndefined();
+        expect(firstPersonModelOf('FirstPersonModel:\nBasicStats:\n')).toBeUndefined();
     });
 });

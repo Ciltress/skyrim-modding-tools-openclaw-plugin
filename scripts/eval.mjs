@@ -30,7 +30,8 @@
  * of the project, Flame Blade Burn, of 10 points (since round 78); and to the sword's value of 150 and charge of 500
  * (since round 88). A task that builds is built when a build succeeded after the run's last change, the delivery rule
  * the tools give the model (since round 100; until then any build that succeeded). The sword and the note are drawn by
- * the game: their model a mesh it has (since round 106).
+ * the game: their model a mesh it has (since round 106); the sword in the player's hands in first person too, its
+ * FirstPersonModel named (since round 107).
  *
  * Nothing is deployed and nothing is installed: the tools that would are denied. The plugin's projects folder is a
  * temporary one, emptied before each run; the instance is only read.
@@ -56,7 +57,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
 import {
-    builtAfterLastChange, dealtDamage, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
+    builtAfterLastChange, dealtDamage, firstPersonModelOf, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
     providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
 import { leftEscape, translatedValue } from './eval-yaml.mjs';
@@ -560,6 +561,8 @@ const TASKS = [
                 fireEnchantment: effects.some(text => FIRE.test(text)),
                 burnsVisibly: effects.some(text => FIRE.test(text) && BURN.test(text)),
                 modelInGame: !!sword && await modelInGame('FlameBlade', sword.text),
+                // Held in the player's hands in first person: 9 sword runs of rounds 87–105 passed without a FirstPersonModel.
+                firstPersonModel: !!sword && !!firstPersonModelOf(sword.text),
                 built: builtProject('FlameBlade', calls)
             };
         },

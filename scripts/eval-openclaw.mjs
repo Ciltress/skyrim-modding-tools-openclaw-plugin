@@ -516,6 +516,16 @@ export function modelOf(text) {
 }
 
 /**
+ * The first-person model a weapon's file names — the record its hands hold in first person, by FormID or editor ID, its
+ * comment left out — or undefined for none, or a line naming none. 9 sword runs of rounds 87–105 passed with no
+ * FirstPersonModel, a sword the player holds invisible in first person.
+ */
+export function firstPersonModelOf(text) {
+    const value = /^FirstPersonModel:[ \t]*(.*?)[ \t]*\r?$/m.exec(text)?.[1]?.replace(/[ \t]*#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
+    return value && !/^(?:null|~)$/i.test(value) ? value : undefined;
+}
+
+/**
  * The damage an effect item deals as the game deals it: its magnitude once, or each second of its duration where it
  * has one and its magic effect is not flagged NoDuration. Round 103's sword+detailed #5 cast a trap's fire at 10 for 2 s
  * — 20 in all — and passed a check of its magnitude alone.

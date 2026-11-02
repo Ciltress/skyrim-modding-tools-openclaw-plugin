@@ -495,12 +495,15 @@ export function builtAfterLastChange(calls, projectsDir) {
 const numberOf = (text, field) => Number(new RegExp(`^[ \\t]*${field}:[ \\t]*(['"]?)(-?[\\d.]+)\\1[ \\t]*\\r?$`, 'm').exec(text)?.[2]);
 
 /**
- * Whether an NPC's text makes its level follow the player's between two levels: its Level a PcLevelMult, its
- * CalcMinLevel and CalcMaxLevel those two. Round 103's npc+detailed #1 and #5 wrote the two bounds and no Level line —
- * a fixed level of 0, the bounds unread — and passed, the task's level unchecked.
+ * Whether an NPC's text makes its level follow the player's between two levels: its Level a PcLevelMult at more than 0 times
+ * the player's, its CalcMinLevel and CalcMaxLevel those two. Round 103's npc+detailed #1 and #5 wrote the two bounds and no
+ * Level line — a fixed level of 0, the bounds unread — and passed, the task's level unchecked. Round 114's npc #4 deleted its
+ * level's `Mult: 1`, as the build then said, and built a Hilda "level 0 × the player's", held at her lowest level: its
+ * LevelMult, on its own line or in the braces, is above 0.
  */
 export function levelFollowsPlayer(text, min, max) {
-    return /^[ \t]*(?:Level:[ \t]*\{[^}\r\n]*)?MutagenObjectType:[ \t]*PcLevelMult\b/m.test(text)
+    const mult = Number(/(?:^[ \t]*|[{,][ \t]*)LevelMult:[ \t]*(['"]?)(-?[\d.]+)\1[ \t]*(?=[,}]|\r?$)/m.exec(text)?.[2]);
+    return /^[ \t]*(?:Level:[ \t]*\{[^}\r\n]*)?MutagenObjectType:[ \t]*PcLevelMult\b/m.test(text) && mult > 0
         && numberOf(text, 'CalcMinLevel') === min && numberOf(text, 'CalcMaxLevel') === max;
 }
 

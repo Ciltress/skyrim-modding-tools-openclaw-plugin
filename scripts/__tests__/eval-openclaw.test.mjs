@@ -308,6 +308,15 @@ describe('levelFollowsPlayer', () => {
         expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 5\n  CalcMaxLevel: 25\n'), 5, 30)).toBe(false);
         expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 1}\n  CalcMinLevel: 50\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
     });
+
+    it('refuses a level that follows the player\'s at 0 times it, or with no LevelMult', () => {
+        // Round 114's npc #4: its `Mult: 1` deleted, built "level 0 × the player's, 5 to 25" — held at level 5.
+        expect(levelFollowsPlayer(npc('  Level:\n    MutagenObjectType: PcLevelMult\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+        expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 0}\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+        expect(levelFollowsPlayer(npc('  Level:\n    MutagenObjectType: PcLevelMult\n    Mult: 1\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(false);
+        // A multiple other than 1 follows the player's too.
+        expect(levelFollowsPlayer(npc('  Level: {MutagenObjectType: PcLevelMult, LevelMult: 0.5}\n  CalcMinLevel: 5\n  CalcMaxLevel: 30\n'), 5, 30)).toBe(true);
+    });
 });
 
 describe('modelOf', () => {

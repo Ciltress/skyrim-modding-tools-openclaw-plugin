@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, firstPersonModelOf, levelFollowsPlayer, modelOf, providerServer, runPhases, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
+import { builtAfterLastChange, callRecord, dealtDamage, failureCodes, firstPersonModelOf, levelFollowsPlayer, modelOf, overridesIn, providerServer, runPhases, startProxy, writeSessionConfig } from '../eval-openclaw.mjs';
 
 /** The eval's copy of the user's OpenClaw configuration: theirs, changed only where a measurement needs it. */
 
@@ -366,5 +366,20 @@ describe('firstPersonModelOf', () => {
         expect(firstPersonModelOf('EditorID: X\nModel:\n  File: Weapons\\Iron\\LongSword.nif\n')).toBeUndefined();
         expect(firstPersonModelOf('FirstPersonModel: Null\n')).toBeUndefined();
         expect(firstPersonModelOf('FirstPersonModel:\nBasicStats:\n')).toBeUndefined();
+    });
+});
+
+describe('overridesIn', () => {
+    it("names each record whose FormKey is another plugin's: a copy of a game record left beside the new one", () => {
+        const records = [
+            { file: 'Weapons/IronSword - 012EB7_Skyrim.esm.yaml', formKey: '012EB7:Skyrim.esm' },
+            { file: 'Weapons/FlameBlade.yaml', formKey: '000800:FlameBlade.esp' },
+            { file: 'ObjectEffects/FlameBladeBurn.yaml', formKey: undefined }
+        ];
+        expect(overridesIn('FlameBlade.esp', records)).toEqual(['Weapons/IronSword - 012EB7_Skyrim.esm.yaml: 012EB7:Skyrim.esm']);
+    });
+
+    it("names none where every record is the project's own, in any case, or not yet numbered", () => {
+        expect(overridesIn('HildaTheNord.esp', [{ file: 'Npcs/Hilda.yaml', formKey: '000800:hildathenord.ESP' }, { file: 'Npcs/X.yaml' }])).toEqual([]);
     });
 });

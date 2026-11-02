@@ -58,7 +58,7 @@ import { parseArgs } from 'node:util';
 import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
 import {
     builtAfterLastChange, dealtDamage, firstPersonModelOf, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
-    providerServer, runOpenClaw, startProxy, writeSessionConfig
+    overridesIn, providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
 import { leftEscape, translatedValue } from './eval-yaml.mjs';
 
@@ -312,9 +312,16 @@ function projectRecords(project) {
     const plugin = fs.existsSync(header) ? /^ModKey:\s*(.+?)\s*$/m.exec(fs.readFileSync(header, 'utf8'))?.[1] : undefined;
     const records = filesUnder(pluginDir).filter(file => file.endsWith('.yaml') && file !== header).map(file => {
         const text = fs.readFileSync(file, 'utf8');
-        return { group: path.relative(pluginDir, file).split(path.sep)[0].toLowerCase(), text, formKey: /^FormKey:\s*(\S+)/m.exec(text)?.[1] };
+        const relative = path.relative(pluginDir, file);
+        return { group: relative.split(path.sep)[0].toLowerCase(), file: relative.replaceAll(path.sep, '/'), text, formKey: /^FormKey:\s*(\S+)/m.exec(text)?.[1] };
     });
     return { plugin, records };
+}
+
+/** Whether a project's plugin overrides no record of another plugin — for the tasks that ask for new records alone (overridesIn). */
+function noOverride(project) {
+    const { plugin, records } = projectRecords(project);
+    return !!plugin && overridesIn(plugin, records).length === 0;
 }
 
 /** The records of one group that the project's own plugin defines — new ones, not overrides. */
@@ -563,6 +570,7 @@ const TASKS = [
                 modelInGame: !!sword && await modelInGame('FlameBlade', sword.text),
                 // Held in the player's hands in first person: 9 sword runs of rounds 87–105 passed without a FirstPersonModel.
                 firstPersonModel: !!sword && !!firstPersonModelOf(sword.text),
+                noOverride: noOverride('FlameBlade'),
                 built: builtProject('FlameBlade', calls)
             };
         },
@@ -601,6 +609,7 @@ const TASKS = [
                 newSpell: !!spell,
                 destruction: effects.some(text => /^MagicSkill:[ \t]*Destruction[ \t]*\r?$/m.test(text)),
                 shock: effects.some(text => /^ResistValue:[ \t]*ResistShock[ \t]*\r?$/m.test(text)),
+                noOverride: noOverride('StormBolt'),
                 built: builtProject('StormBolt', calls)
             };
         }
@@ -620,6 +629,7 @@ const TASKS = [
                 newNpc: !!npc,
                 nord: traits.length > 0 && traits.every(t => t.race?.toLowerCase() === truth.nordRace.toLowerCase()),
                 female: traits.length > 0 && traits.every(t => t.female),
+                noOverride: noOverride('HildaTheNord'),
                 built: builtProject('HildaTheNord', calls)
             };
         },
@@ -662,6 +672,7 @@ const TASKS = [
                 textCopied: !!note && translatedValue(note.text, 'BookText') === truth.mavenNote.text,
                 // Round 98's note #3 built on Clutter\Books\NotePlaceholder.nif, which the game does not have.
                 modelInGame: !!note && await modelInGame('MavenNote', note.text),
+                noOverride: noOverride('MavenNote'),
                 built: builtProject('MavenNote', calls)
             };
         }

@@ -526,6 +526,17 @@ export function firstPersonModelOf(text) {
 }
 
 /**
+ * The records of a project that override another plugin's — their FormKey that plugin's — as `file: FormKey`. A task that
+ * asks for new records leaves none: round 112's sword+detailed #1 kept IronSword's addPatch copy renamed "Flame Blade"
+ * beside its own new sword — every Iron Sword in the game renamed — and passed. `records` are `{ file, formKey }`, a
+ * new record's FormKey its own plugin's or none.
+ */
+export function overridesIn(plugin, records) {
+    const own = `:${String(plugin).toLowerCase()}`;
+    return records.filter(r => r.formKey && !r.formKey.toLowerCase().endsWith(own)).map(r => `${r.file}: ${r.formKey}`);
+}
+
+/**
  * The damage an effect item deals as the game deals it: its magnitude once, or each second of its duration where it
  * has one and its magic effect is not flagged NoDuration. Round 103's sword+detailed #5 cast a trap's fire at 10 for 2 s
  * — 20 in all — and passed a check of its magnitude alone.

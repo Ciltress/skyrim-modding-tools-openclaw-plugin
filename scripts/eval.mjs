@@ -743,8 +743,9 @@ function crashTask({ id, prompt, log, mod, named }) {
             readTheLog: calls.some(c => c.name === 'readCrashLog' && !c.isError),
             rightMod: named.test(answer),
             // A mod downloaded again replaces its files, as a reinstall does: eval round 104's crash-mesh #2 advised to
-            // "re-download that mod".
-            rightFix: /\b(disabl|remov|uninstall|reinstall|re-?download|updat|replac|turn(?:ed|ing)? off)/i.test(answer),
+            // "re-download that mod". A mod brought up to date is updated: round 118's crash-dll #5 advised to "make sure this
+            // mod is … fully up-to-date" and supports the game's version.
+            rightFix: /\b(disabl|remov|uninstall|reinstall|re-?download|updat|up[- ]to[- ]date|replac|turn(?:ed|ing)? off)/i.test(answer),
             nothingChanged: !calls.some(c => NOT_ALLOWED.includes(c.name)) && await modsState() === before
         })
     };

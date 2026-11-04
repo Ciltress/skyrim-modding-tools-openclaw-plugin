@@ -589,8 +589,10 @@ const TASKS = [
                 enchantmentNamed: !!enchantment && /^flame blade burn$/i.test(nameOf(enchantment.text)),
                 // As the game deals it: round 103's sword+detailed #5 burned 10 a second for 2 s and passed on its magnitude.
                 tenPoints: items.some(({ text, magnitude, duration }) => FIRE.test(text) && dealtDamage(magnitude, duration, text) === 10),
-                valueOf150: /^[ \t]+Value:[ \t]*(['"]?)150\1[ \t]*\r?$/m.test(basicStats),
-                chargeOf500: !!sword && /^EnchantmentAmount:[ \t]*(['"]?)500\1[ \t]*\r?$/m.test(sword.text)
+                // A comment after the number is YAML's, not the value's: round 122's sword+detailed #5 built value 150 and charge
+                // 500 from `Value: 150 # Requested Price` and `EnchantmentAmount: 500 # Requested Charge`, and failed both.
+                valueOf150: /^[ \t]+Value:[ \t]*(['"]?)150\1(?:[ \t]+#.*)?[ \t]*\r?$/m.test(basicStats),
+                chargeOf500: !!sword && /^EnchantmentAmount:[ \t]*(['"]?)500\1(?:[ \t]+#.*)?[ \t]*\r?$/m.test(sword.text)
             };
         }
     },

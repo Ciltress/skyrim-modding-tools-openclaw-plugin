@@ -16,9 +16,10 @@
  * another is a server with OpenAI's API, an `openai-completions` provider (--provider <its id> --model <the model id
  * it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
  * loads nothing, and the speed is the server's own timings, when it gives them.
- * --authoring-runs sets the runs of the tasks that write records (sword, spell, npc, note, and their `+detailed`
- * runs), --runs those of the others; it defaults to --runs. Every miss of rounds 24–31 was an authoring task's, and
- * with three runs each a round's noise was about ±3 of 39. --think true|false|<level> passes a thinking level for the
+ * --authoring-runs sets the runs of the tasks that write records (sword, armor, potion, recipe, arrow, shout, effect,
+ * leveled, world, perk, quest, spell, npc, note, and their `+detailed` runs), --runs those of the others; it defaults
+ * to --runs. Every miss of rounds 24–31 was an authoring task's, and with three runs each a round's noise was about ±3
+ * of 39. --think true|false|<level> passes a thinking level for the
  * run (true is OpenClaw's `medium`, false `off`); unset, the agent's own.
  *
  * Before the first task the model is loaded with a short "hi", so no task's time includes the load; when it was not
@@ -31,7 +32,25 @@
  * (since round 88). A task that builds is built when a build succeeded after the run's last change, the delivery rule
  * the tools give the model (since round 100; until then any build that succeeded). The sword and the note are drawn by
  * the game: their model a mesh it has (since round 106); the sword in the player's hands in first person too, its
- * FirstPersonModel named (since round 107).
+ * FirstPersonModel named (since round 107). The armor task (since round 125) asks for a helmet that protects from frost:
+ * worn on the head, drawn on the ground and on its wearer — its own model and an armor addon's the game has — with a frost
+ * resistance cast for as long as it is worn; armor+detailed beside that for heavy armor, an armor rating of 20, a weight
+ * of 6, a value of 200, and a new enchantment of the project, Frostguard Ward, of 30. Since round 125 too: a potion that
+ * restores health (+detailed: 40 at once, value 30, weight 0.5), a recipe for the Ancient Nord Sword at the forge
+ * (2 iron ingots and a leather strip; +detailed: steel ingots, and the Steel Smithing perk) and arrows that beat the
+ * Steel Arrow's damage, flying as a projectile the game draws (+detailed: 16 damage, value 4); a dragon shout of three
+ * words, each casting a voice spell that deals shock damage (+detailed: its own words Kreh, Dahl and Vund, translated,
+ * dealing 20, 40 and 60, recovering in 15, 30 and 45 s); and a spell with a magic effect of the mod's own, not the game's,
+ * that raises the caster's carry weight and gives it back when it ends (+detailed: named Feather Step, 100 for 60 s).
+ * And, the user's picks of the objects no task covered: a bandit leveled list that also gives the Silver Sword, its
+ * own entries kept (+detailed: at level 1, a one-handed list); a chest in Breezehome holding 500 gold and a Steel Sword
+ * (+detailed: its own, Hunter's Chest, that never respawns, with 10 Steel Arrows too); a perk by which bows deal 20%
+ * more damage (+detailed: 30%, while sneaking, Archery 30 required); and a quest started with the game whose compiled
+ * script gives the player 500 gold (+detailed: named Starter Gold, run once, a Steel Sword too, the quest stopped).
+ *
+ * --check <folder> runs no model: the checks alone, on projects folders made by hand, one per folder named
+ * `<task>[+detailed]--<what it is>` — a correct mod, which passes every check, or one broken on purpose, which fails the
+ * check its fault is for (checkCases).
  *
  * Nothing is deployed and nothing is installed: the tools that would are denied. The plugin's projects folder is a
  * temporary one, emptied before each run; the instance is only read.
@@ -80,7 +99,8 @@ const { values: opt } = parseArgs({
         provider: { type: 'string', default: 'ollama' },
         openclaw: { type: 'string' },
         'openclaw-config': { type: 'string' },
-        'openclaw-agent': { type: 'string' }
+        'openclaw-agent': { type: 'string' },
+        check: { type: 'string' }
     }
 });
 
@@ -181,7 +201,8 @@ const ollamaVersion = OPENAI ? undefined : (await ollama('/api/version').catch((
 
 // --- OpenClaw and the plugin --------------------------------------------------------------------
 
-const projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-projects-'));
+// A `let`: --check points it at each case's folder in turn.
+let projectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-projects-'));
 leftovers.push(projectsDir);
 // The crash-log folder readCrashLog reads in a run: a crash task puts its one log there.
 const crashLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-crash-logs-'));
@@ -281,6 +302,31 @@ const truth = {
         if (!text?.includes('"')) fail('could not read the text of Note From Maven');
         // Its lines and empty lines, which textCopied does not count: x-x-x.
         return { formId: read.formId, text, shape: lineShape(textValue(file, 'BookText')) };
+    })(),
+    // What the recipe task makes: every weapon named so (the honed one is named otherwise).
+    ancientNordSword: await (async () => {
+        const found = await callServerJson('findRecords', { text: 'Ancient Nord Sword', types: ['WEAP'], limit: 25 });
+        const editorIds = found.records.filter(r => r.name?.toLowerCase() === 'ancient nord sword' && r.editorId)
+            .map(r => r.editorId.toLowerCase());
+        return editorIds.length ? { editorIds } : fail('the instance has no Ancient Nord Sword');
+    })(),
+    // What the leveled-list task adds: every weapon named Silver Sword, by FormKey.
+    silverSword: await (async () => {
+        const found = await callServerJson('findRecords', { text: 'Silver Sword', types: ['WEAP'], limit: 25 });
+        const formIds = found.records.filter(r => r.name?.toLowerCase() === 'silver sword').map(r => r.formId.toLowerCase());
+        return formIds.length ? { formIds } : fail('the instance has no Silver Sword');
+    })(),
+    // Where the world task puts its chest: Breezehome, the player's house in Whiterun.
+    breezehome: await (async () => {
+        const found = await callServerJson('findRecords', { text: 'Breezehome', types: ['CELL'], limit: 5 });
+        const cell = found.records.find(r => r.name?.toLowerCase() === 'breezehome') ?? found.records[0];
+        return cell ? { formId: cell.formId, editorId: cell.editorId } : fail('the instance has no Breezehome cell');
+    })(),
+    // The damage the arrow task's simple prompt asks to beat.
+    steelArrow: await (async () => {
+        const read = await callServerJson('readRecord', { record: 'SteelArrow' });
+        const damage = ammoDamage(read.versions[0].files.map(f => f.text).join('\n'));
+        return Number.isFinite(damage) ? { damage } : fail('could not read the Steel Arrow\'s damage');
     })()
 };
 
@@ -470,13 +516,323 @@ async function flameBlade() {
  * built Flame Blades on mesh paths of their own making, which the game draws nothing for, and passed.
  */
 async function modelInGame(project, text) {
-    const model = modelOf(text);
+    return modelFileInGame(project, modelOf(text));
+}
+
+/** Whether the game has a model file: loose in a mod, in an archive of the load order, or in the project's assets. */
+async function modelFileInGame(project, model) {
     if (!model) return false;
     if ((await backend.findGameFiles([model]))[model]) return true;
     const asset = path.join('meshes', ...model.split(/[\\/]+/)).toLowerCase();
     const assets = path.join(projectsDir, project, 'assets');
     return filesUnder(assets).some(file => path.relative(assets, file).toLowerCase() === asset);
 }
+
+/**
+ * A field's block at the margin — `WorldModel:` and the lines deeper below it, or the items of a list Spriggit writes
+ * at the margin (`Armature:` then `- 0179B0:Skyrim.esm`) — or '' where the record has none.
+ */
+function blockOf(text, field) {
+    return new RegExp(`^${field}:[ \\t]*\\r?\\n((?:[ \\t]+.*(?:\\r?\\n|$)|-(?:[ \\t].*)?(?:\\r?\\n|$)|[ \\t]*\\r?\\n)*)`, 'm')
+        .exec(text ?? '')?.[1] ?? '';
+}
+
+/** The first model file a block names, its comment and quotes left out: an armor's or armor addon's `WorldModel`. */
+function fileIn(block) {
+    const file = /^[ \t]+File:[ \t]*(.+?)[ \t]*\r?$/m.exec(block)?.[1]?.replace(/[ \t]+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
+    return file || undefined;
+}
+
+/** The items of a list at the margin (`Keywords:`, `Armature:`), as block or flow list, their comments left out. */
+function listOf(text, field) {
+    const flow = new RegExp(`^${field}:[ \\t]*\\[([^\\]\\r\\n]*)\\]`, 'm').exec(text ?? '')?.[1];
+    if (flow !== undefined) return flow.split(',').map(item => item.trim()).filter(Boolean);
+    return [...blockOf(text, field).matchAll(/^[ \t]*-[ \t]*([^\s#]+)/gm)].map(m => m[1]);
+}
+
+/** A magic effect that raises frost resistance: its archetype's actor value. */
+const FROST_RESIST = /^[ \t]+ActorValue:[ \t]*ResistFrost[ \t]*\r?$/m;
+
+/**
+ * A magic effect cast for as long as its item is worn: ConstantEffect, the default the serializer leaves out — the
+ * game's EnchResistFrostConstantSelf has no CastType line.
+ */
+const CONSTANT = { test: text => !/^CastType:/m.test(text) || /^CastType:[ \t]*ConstantEffect[ \t]*\r?$/m.test(text) };
+
+/**
+ * The armor task's records: the project's new helmet named Frostguard Helm; the armor addons its Armature names, each as
+ * text wherever it is; the enchantment it names — its `formKey` where the project has that record, its `text` wherever it
+ * is — and that enchantment's Effects items, each with its magic effect's text and its magnitude.
+ */
+async function frostguardHelm() {
+    const project = 'FrostGuard';
+    const helm = newRecords(project, 'armors').find(r => /^frostguard helm$/i.test(nameOf(r.text)));
+    if (!helm) return { helm, addons: [], items: [] };
+    const addons = await Promise.all(listOf(helm.text, 'Armature').map(link => recordAnywhere(project, link)));
+    const link = /^ObjectEffect:[ \t]*([^\s#]+)/m.exec(helm.text)?.[1];
+    if (!link) return { helm, addons, items: [] };
+    const formKey = await linkTarget(project, link);
+    const own = formKey && projectRecords(project).records.find(r => r.formKey?.toLowerCase() === formKey.toLowerCase());
+    const text = await recordAnywhere(project, link);
+    const items = await Promise.all(effectItems(text).map(async ({ effect, magnitude }) =>
+        ({ text: await recordAnywhere(project, effect), magnitude })));
+    return { helm, addons, enchantment: { formKey: own ? formKey : undefined, text }, items };
+}
+
+/** A magic effect that changes Health, and one that harms: a restoring effect is the first and not the second. */
+const HEALTH = /^[ \t]+ActorValue:[ \t]*Health[ \t]*\r?$/m;
+const DETRIMENTAL = /^[ \t]*-[ \t]*Detrimental[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bDetrimental\b/m;
+
+/** A magic effect given all at once: no duration, or flagged so. */
+const atOnce = (duration, text) => duration === 0 || /^[ \t]*-[ \t]*NoDuration[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bNoDuration\b/m.test(text);
+
+/**
+ * The potion task's records: the project's new potion named Healing Draught, and its Effects items, each with its magic
+ * effect's text, its magnitude and its duration.
+ */
+async function healingDraught() {
+    const potion = newRecords('HealingDraught', 'ingestibles').find(r => /^healing draught$/i.test(nameOf(r.text)));
+    const items = potion ? await Promise.all(effectItems(potion.text).map(async ({ effect, magnitude, duration }) =>
+        ({ text: await recordAnywhere('HealingDraught', effect), magnitude, duration }))) : [];
+    return { potion, items };
+}
+
+
+/**
+ * The recipe task's records: the project's new recipe that makes the Ancient Nord Sword, with the editor IDs of what it
+ * makes, where, and from what, each material with its count; and the editor IDs its conditions name.
+ */
+async function nordSwordRecipe() {
+    const project = 'NordSwordRecipe';
+    const recipes = await Promise.all(newRecords(project, 'constructibleobjects').map(async r => ({
+        ...r,
+        makes: await editorIdOf(project, /^CreatedObject:[ \t]*([^\s#]+)/m.exec(r.text)?.[1])
+    })));
+    const recipe = recipes.find(r => truth.ancientNordSword.editorIds.includes(r.makes?.toLowerCase()));
+    if (!recipe) return { recipe, materials: [], conditions: [] };
+    const at = await editorIdOf(project, /^WorkbenchKeyword:[ \t]*([^\s#]+)/m.exec(recipe.text)?.[1]);
+    // A recipe's materials are written as a container's items are.
+    const materials = await Promise.all(containerItems(recipe.text).map(async ({ link, count }) => ({ id: await editorIdOf(project, link), count })));
+    const linked = [...blockOf(recipe.text, 'Conditions').matchAll(/^[ \t]+\w+:[ \t]*([0-9A-Fa-f]{6}:\S+\.es[mpl]|[A-Za-z]\w*)[ \t]*(?:#.*)?\r?$/gm)]
+        .map(m => m[1]).filter(link => /^[0-9A-Fa-f]{6}:/.test(link)
+            || !/^(?:Mutagen|Condition|Equal|Greater|Less|NotEqual|Subject|Target|Reference|None|True|False)/.test(link));
+    const conditions = (await Promise.all(linked.map(link => editorIdOf(project, link)))).filter(Boolean);
+    return { recipe, at, materials, conditions };
+}
+
+/** Whether a recipe's materials are just these, each as many as given: `{ IngotIron: 2, LeatherStrips: 1 }`. */
+const materialsAre = (materials, wanted) => {
+    const counts = {};
+    for (const { id, count } of materials) if (id) counts[id.toLowerCase()] = (counts[id.toLowerCase()] ?? 0) + count;
+    const want = Object.entries(wanted).map(([id, count]) => [id.toLowerCase(), count]);
+    return Object.keys(counts).length === want.length && want.every(([id, count]) => counts[id] === count);
+};
+
+/** An ammunition's damage as written, a comment after it left out; NaN where it has none. */
+function ammoDamage(text) {
+    return Number(/^[ \t]*Damage:[ \t]*(['"]?)(-?[\d.]+)\1(?:[ \t]+#.*)?[ \t]*\r?$/m.exec(text ?? '')?.[2] ?? NaN);
+}
+
+/**
+ * The ammunition task's records: the project's new arrow named Hunter's Arrow, and the projectile it names as text,
+ * wherever it is.
+ */
+async function huntersArrow() {
+    const arrow = newRecords('HuntersArrow', 'ammunitions').find(r => /^hunter'?s arrows?$/i.test(nameOf(r.text)));
+    const link = arrow && /^Projectile:[ \t]*([^\s#]+)/m.exec(arrow.text)?.[1];
+    return { arrow, projectile: link ? await recordAnywhere('HuntersArrow', link) : '' };
+}
+
+/** A magic effect a shock resistance lowers: shock damage. */
+const SHOCK = /^ResistValue:[ \t]*ResistShock[ \t]*\r?$/m;
+
+/** Whether a record's FormKey is the project's own plugin's: a new record of it, not the load order's. */
+async function ownRecord(project, link) {
+    const formKey = link && await linkTarget(project, link);
+    const { plugin } = projectRecords(project);
+    return !!formKey && !!plugin && formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`);
+}
+
+/**
+ * The shout task's records: the project's new shout named Thunder Roar, and each of its words in order — the word of
+ * power as text, wherever it is, and whether it is the project's; the spell the word casts, as text; that spell's Effects
+ * items with their magic effects' texts, magnitudes and durations; and the word's recovery time.
+ */
+async function thunderRoar() {
+    const project = 'ThunderRoar';
+    const shout = newRecords(project, 'shouts').find(r => /^thunder roar$/i.test(nameOf(r.text)));
+    if (!shout) return { shout, words: [] };
+    const entries = blockOf(shout.text, 'WordsOfPower').split(/^[ \t]*-[ \t]*/m).slice(1);
+    const words = await Promise.all(entries.map(async entry => {
+        const word = /\bWord:[ \t]*([^\s#]+)/.exec(entry)?.[1];
+        const spell = /\bSpell:[ \t]*([^\s#]+)/.exec(entry)?.[1];
+        const spellText = spell ? await recordAnywhere(project, spell) : '';
+        return {
+            wordText: word ? await recordAnywhere(project, word) : '',
+            ownWord: await ownRecord(project, word),
+            spellText,
+            items: await Promise.all(effectItems(spellText).map(async ({ effect, magnitude, duration }) =>
+                ({ text: await recordAnywhere(project, effect), magnitude, duration }))),
+            recovery: Number(/RecoveryTime:[ \t]*(['"]?)(-?[\d.]+)\1/.exec(entry)?.[2] ?? NaN)
+        };
+    }));
+    return { shout, words };
+}
+
+/** The shock damage a word's spell deals, as the game deals it: the largest of its shock effects'. */
+const shockDealt = word => Math.max(0, ...word.items.filter(({ text }) => SHOCK.test(text))
+    .map(({ text, magnitude, duration }) => dealtDamage(magnitude, duration, text)));
+
+/** A magic effect that changes carry weight, and one that gives back what it changed when it ends. */
+const CARRY = /^[ \t]+ActorValue:[ \t]*CarryWeight[ \t]*\r?$/m;
+const RECOVER = /^[ \t]*-[ \t]*Recover[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bRecover\b/m;
+
+/**
+ * The effect task's records: the project's new spell named Feather Step, and its Effects items, each with its magic
+ * effect's text, magnitude and duration, and whether that magic effect is the project's own.
+ */
+async function featherStep() {
+    const project = 'FeatherStep';
+    const spell = newRecords(project, 'spells').find(r => /^feather step$/i.test(nameOf(r.text)));
+    const items = spell ? await Promise.all(effectItems(spell.text).map(async ({ effect, magnitude, duration }) =>
+        ({ text: await recordAnywhere(project, effect), magnitude, duration, own: await ownRecord(project, effect) }))) : [];
+    return { spell, items, own: items.filter(item => item.own) };
+}
+
+/**
+ * A list's items — a leveled list's entries, a container's items, a perk's effects — each split off at its `-` as deep
+ * as the first, as text: a list inside an item (a perk effect's conditions) stays in it.
+ */
+function entriesOf(text, field) {
+    const block = blockOf(text, field);
+    const indent = /^([ \t]*)-/m.exec(block)?.[1];
+    return indent === undefined ? [] : block.split(new RegExp(`^${indent}-(?=[ \\t]|\\r?$)`, 'm')).slice(1);
+}
+
+/** A leveled list's entries: the record each names, at what level, how many. */
+function leveledEntries(text) {
+    return entriesOf(text, 'Entries').map(entry => ({
+        reference: /\bReference:[ \t]*([^\s#]+)/.exec(entry)?.[1],
+        level: Number(/\bLevel:[ \t]*(\d+)/.exec(entry)?.[1] ?? NaN),
+        count: Number(/\bCount:[ \t]*(\d+)/.exec(entry)?.[1] ?? 1)
+    })).filter(entry => entry.reference);
+}
+
+/**
+ * The leveled-list task's records: the project's copies of the load order's leveled item lists whose editor ID names
+ * bandits, each with its entries resolved to FormKeys, and the entries of the list as the load order has it.
+ */
+async function banditLists() {
+    const project = 'BanditSilver';
+    const { plugin, records } = projectRecords(project);
+    const copies = records.filter(r => r.group === 'leveleditems' && r.formKey && plugin && !r.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`)
+        && /bandit/i.test(/^EditorID:[ \t]*(\S+)/m.exec(r.text)?.[1] ?? ''));
+    return Promise.all(copies.map(async copy => {
+        const resolve = list => Promise.all(list.map(async e => ({ ...e, formKey: (await linkTarget(project, e.reference))?.toLowerCase() })));
+        let theirs = [];
+        try {
+            const read = await callServerJson('readRecord', { record: copy.formKey });
+            theirs = await resolve(leveledEntries(read.versions[0].files.map(f => f.text).join('\n')));
+        } catch { /* a list the load order has not */ }
+        return { ...copy, entries: await resolve(leveledEntries(copy.text)), theirs };
+    }));
+}
+
+/** Whether a list keeps every entry the load order's has: each, with its level and count, as many times as there. */
+const keepsEntries = (entries, theirs) => {
+    const key = e => `${e.formKey}|${e.level}|${e.count}`;
+    const left = entries.map(key);
+    return theirs.length > 0 && theirs.every(e => {
+        const at = left.indexOf(key(e));
+        if (at < 0) return false;
+        left.splice(at, 1);
+        return true;
+    });
+};
+
+/** A container's or recipe's items: the record each names and how many (`Item:` under `Item:`, as Spriggit writes them). */
+function containerItems(text) {
+    return entriesOf(text, 'Items').map(item => ({
+        link: /\bItem:[ \t]*([^\s#{]+)[ \t]*(?:#.*)?$/m.exec(item)?.[1],
+        count: Number(/\bCount:[ \t]*(\d+)/.exec(item)?.[1] ?? NaN)
+    })).filter(item => item.link);
+}
+
+/**
+ * The world task's records: the project's files under its cells that place an object in Breezehome, each with the text
+ * of the base record it places — a container, the project's own or the load order's — and that container's items by
+ * editor ID with their counts.
+ */
+async function breezehomeChests() {
+    const project = 'BreezehomeChest';
+    const { records } = projectRecords(project);
+    const cell = truth.breezehome;
+    const inCell = records.filter(r => (r.group === 'cells' || r.group === 'worldspaces')
+        && (r.text.includes(cell.formId) || r.file.toLowerCase().includes(cell.editorId.toLowerCase())
+            || r.file.includes(cell.formId.replace(':', '_'))));
+    const placed = inCell.flatMap(r => [...r.text.matchAll(/^[ \t]*(?:-[ \t]*)?Base:[ \t]*([^\s#]+)/gm)].map(m => m[1]));
+    return Promise.all(placed.map(async base => {
+        const text = await recordAnywhere(project, base);
+        // A container: the project's own in its Containers folder, or a CONT of the load order.
+        const formKey = (await linkTarget(project, base))?.toLowerCase();
+        const ownFile = records.find(r => r.formKey?.toLowerCase() === formKey);
+        let isContainer = ownFile ? ownFile.group === 'containers' : false;
+        if (!ownFile && formKey) {
+            try {
+                isContainer = (await callServerJson('findRecords', { records: [formKey], limit: 1 })).records[0]?.signature === 'CONT';
+            } catch { /* a base the load order has not */ }
+        }
+        const container = isContainer ? text : '';
+        const items = await Promise.all(containerItems(container).map(async ({ link, count }) => ({ id: (await editorIdOf(project, link))?.toLowerCase(), count })));
+        return { base, own: await ownRecord(project, base), text: container, items };
+    })).then(all => all.filter(chest => chest.text));
+}
+
+/** How many of an item a container holds, by the item's editor ID. */
+const holds = (chest, editorId) => chest.items.filter(i => i.id === editorId.toLowerCase()).reduce((n, i) => n + (i.count || 0), 0);
+
+/** The perk task's record: the project's new perk named Steady Aim. */
+const steadyAim = () => newRecords('SteadyAim', 'perks').find(r => /^steady aim$/i.test(nameOf(r.text)));
+
+/** Whether a perk has an entry at ModAttackDamage, the entry point that changes the damage of the owner's attacks. */
+const changesDamage = text => entriesOf(text, 'Effects').some(effect => /\bEntryPoint:[ \t]*ModAttackDamage\b/.test(effect));
+
+/**
+ * A perk's entry that changes attack damage by a multiple: its EntryPoint ModAttackDamage with a multiplication, and the
+ * multiple — or undefined where it has none.
+ */
+function damageMultiple(text) {
+    for (const effect of entriesOf(text, 'Effects')) {
+        if (!/\bEntryPoint:[ \t]*ModAttackDamage\b/.test(effect) || !/\bModification:[ \t]*Multiply\b/.test(effect)) continue;
+        const value = Number(/^[ \t]+Value:[ \t]*(-?[\d.]+)/m.exec(effect)?.[1] ?? NaN);
+        if (Number.isFinite(value)) return value;
+    }
+    return undefined;
+}
+
+/** The quest task's records: the project's new quests, its Papyrus sources and the scripts its build compiled. */
+function starterGold() {
+    const project = 'StarterGold';
+    const root = path.join(projectsDir, project);
+    const quests = newRecords(project, 'quests');
+    const sources = filesUnder(root).filter(f => f.toLowerCase().endsWith('.psc') && !f.includes(`${path.sep}build${path.sep}`))
+        .map(f => ({ name: path.basename(f, '.psc').toLowerCase(), text: fs.readFileSync(f, 'utf8') }));
+    const compiled = filesUnder(path.join(root, 'build')).filter(f => f.toLowerCase().endsWith('.pex')).map(f => path.basename(f, '.pex').toLowerCase());
+    return { quests, sources, compiled };
+}
+
+/** The scripts a record's VirtualMachineAdapter attaches, by name, and the links its properties fill. */
+function attachedScripts(text) {
+    const adapter = blockOf(text, 'VirtualMachineAdapter');
+    return {
+        names: [...adapter.matchAll(/^[ \t]*-?[ \t]*Name:[ \t]*([A-Za-z_]\w*)[ \t]*\r?$/gm)].map(m => m[1].toLowerCase()),
+        links: [...adapter.matchAll(/^[ \t]+Object:[ \t]*([^\s#]+)/gm)].map(m => m[1])
+    };
+}
+
+/** A number at the margin as written, a comment after it YAML's, not the value's: `Value: 200 # Requested`. */
+const fieldIs = (text, field, number) =>
+    new RegExp(`^${field}:[ \\t]*(['"]?)${number}(?:\\.0+)?\\1(?:[ \\t]+#.*)?[ \\t]*\\r?$`, 'm').test(text ?? '');
 
 /** Built: a build succeeded after the run's last change, and the project's build folder holds a plugin. */
 const builtProject = (project, calls) =>
@@ -595,6 +951,358 @@ const TASKS = [
                 // 500 from `Value: 150 # Requested Price` and `EnchantmentAmount: 500 # Requested Charge`, and failed both.
                 valueOf150: /^[ \t]+Value:[ \t]*(['"]?)150\1(?:[ \t]+#.*)?[ \t]*\r?$/m.test(basicStats),
                 chargeOf500: !!sword && /^EnchantmentAmount:[ \t]*(['"]?)500\1(?:[ \t]+#.*)?[ \t]*\r?$/m.test(sword.text)
+            };
+        }
+    },
+    // Armor (since round 125, the user's wish): an item worn, drawn by its armor addons, with an enchantment cast for as
+    // long as it is worn.
+    {
+        id: 'armor',
+        skill: 'skyrim-modding-items-and-crafting',
+        prompt: 'Make a new mod called FrostGuard with a new helmet named "Frostguard Helm" that protects its wearer ' +
+            'from frost. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called FrostGuard with a new helmet named "Frostguard Helm". Make it like the Steel ' +
+            'Helmet — its models, sounds and keywords, a heavy armor helmet — but with an armor rating of 20, a weight of 6 ' +
+            'and a value of 200. Give it a new enchantment of its own, named "Frostguard Ward", that gives its wearer 30% ' +
+            'frost resistance. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { helm, addons, items } = await frostguardHelm();
+            const slots = blockOf(helm?.text, 'BodyTemplate');
+            return {
+                newHelmet: !!helm,
+                // Worn on the head: its body slots name the head or the hair, as the game's helmets do.
+                onTheHead: /^[ \t]*-[ \t]*(?:Head|Hair)[ \t]*\r?$|\[[^\]\r\n]*\b(?:Head|Hair)\b/m.test(slots),
+                // A helmet the player can carry and wear.
+                playable: !!helm && !/^[ \t]+-[ \t]*NonPlayable[ \t]*\r?$|^[ \t]*\w*Flags:[ \t]*\[[^\]\r\n]*\bNonPlayable\b/m.test(helm.text),
+                // Drawn on the ground, and on its wearer: its own model, and an armor addon whose model the game has.
+                modelInGame: !!helm && await modelFileInGame('FrostGuard', fileIn(blockOf(helm.text, 'WorldModel'))),
+                wornModelInGame: (await Promise.all(addons.map(text => modelFileInGame('FrostGuard', fileIn(blockOf(text, 'WorldModel'))))))
+                    .some(Boolean),
+                frostResistance: items.some(({ text }) => FROST_RESIST.test(text)),
+                // For as long as it is worn: an effect cast otherwise does nothing on an armor.
+                whileWorn: items.some(({ text }) => FROST_RESIST.test(text) && CONSTANT.test(text)),
+                noOverride: noOverride('FrostGuard'),
+                built: builtProject('FrostGuard', calls)
+            };
+        },
+        // What the detailed prompt names, beside those: heavy armor, the numbers, and a new enchantment of its own.
+        detailedCheck: async ({ calls }) => {
+            const { helm, enchantment, items } = await frostguardHelm();
+            const { plugin } = projectRecords('FrostGuard');
+            return {
+                ...await TASKS.find(t => t.id === 'armor').check({ calls }),
+                heavyArmor: /^[ \t]+ArmorType:[ \t]*HeavyArmor[ \t]*\r?$/m.test(blockOf(helm?.text, 'BodyTemplate')),
+                armorRating20: fieldIs(helm?.text, 'ArmorRating', 20),
+                weightOf6: fieldIs(helm?.text, 'Weight', 6),
+                valueOf200: fieldIs(helm?.text, 'Value', 200),
+                ownEnchantment: !!enchantment?.formKey && !!plugin && enchantment.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`),
+                enchantmentNamed: !!enchantment && /^frostguard ward$/i.test(nameOf(enchantment.text)),
+                resist30: items.some(({ text, magnitude }) => FROST_RESIST.test(text) && magnitude === 30)
+            };
+        }
+    },
+    // A potion (since round 125): an item drunk, its effect on the drinker.
+    {
+        id: 'potion',
+        skill: 'skyrim-modding-items-and-crafting',
+        prompt: 'Make a new mod called HealingDraught with a new potion named "Healing Draught" that restores the ' +
+            'drinker\'s health. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called HealingDraught with a new potion named "Healing Draught". Make it like the ' +
+            'Potion of Minor Healing — its model and sounds — but restoring 40 points of health at once, with a value of 30 ' +
+            'and a weight of 0.5. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { potion, items } = await healingDraught();
+            return {
+                newPotion: !!potion,
+                // Drunk as a potion: flagged neither food nor poison.
+                aPotion: !!potion && !/^[ \t]*-[ \t]*(?:FoodItem|Poison)[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\b(?:FoodItem|Poison)\b/m.test(potion.text),
+                restoresHealth: items.some(({ text }) => HEALTH.test(text) && !DETRIMENTAL.test(text)),
+                modelInGame: !!potion && await modelInGame('HealingDraught', potion.text),
+                noOverride: noOverride('HealingDraught'),
+                built: builtProject('HealingDraught', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const { potion, items } = await healingDraught();
+            return {
+                ...await TASKS.find(t => t.id === 'potion').check({ calls }),
+                restores40AtOnce: items.some(({ text, magnitude, duration }) =>
+                    HEALTH.test(text) && !DETRIMENTAL.test(text) && magnitude === 40 && atOnce(duration, text)),
+                valueOf30: fieldIs(potion?.text, 'Value', 30),
+                weightOf05: fieldIs(potion?.text, 'Weight', '0?\\.5')
+            };
+        }
+    },
+    // A recipe (since round 125): a record that makes another, at a station, from materials, for a player with a perk.
+    {
+        id: 'recipe',
+        skill: 'skyrim-modding-items-and-crafting',
+        prompt: 'Make a new mod called NordSwordRecipe with a recipe that lets the player make the Ancient Nord Sword at ' +
+            'the forge from 2 iron ingots and 1 leather strip. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called NordSwordRecipe with a recipe that lets the player make the Ancient Nord Sword. ' +
+            'Make it like the Steel Sword\'s recipe — made at the forge, and shown only to a player with the Steel Smithing ' +
+            'perk — but from 2 steel ingots and 1 leather strip. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { recipe, at, materials } = await nordSwordRecipe();
+            return {
+                newRecipe: !!recipe,
+                atTheForge: at?.toLowerCase() === 'craftingsmithingforge',
+                ironAndLeather: materialsAre(materials, { IngotIron: 2, LeatherStrips: 1 }),
+                noOverride: noOverride('NordSwordRecipe'),
+                built: builtProject('NordSwordRecipe', calls)
+            };
+        },
+        // Its own materials, steel for iron, and the perk.
+        detailedCheck: async ({ calls }) => {
+            const { recipe, at, materials, conditions } = await nordSwordRecipe();
+            return {
+                newRecipe: !!recipe,
+                atTheForge: at?.toLowerCase() === 'craftingsmithingforge',
+                steelAndLeather: materialsAre(materials, { IngotSteel: 2, LeatherStrips: 1 }),
+                steelSmithing: conditions.some(id => id.toLowerCase() === 'steelsmithing'),
+                noOverride: noOverride('NordSwordRecipe'),
+                built: builtProject('NordSwordRecipe', calls)
+            };
+        }
+    },
+    // Ammunition (since round 125): arrows, and the projectile they fly as.
+    {
+        id: 'arrow',
+        skill: 'skyrim-modding-items-and-crafting',
+        prompt: 'Make a new mod called HuntersArrow with new arrows named "Hunter\'s Arrow" that do more damage than steel ' +
+            'arrows. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called HuntersArrow with new arrows named "Hunter\'s Arrow". Make them like the Steel ' +
+            'Arrow — its model, the projectile it flies as and its sounds — but with 16 damage and a value of 4. Build it, ' +
+            'but do not deploy it.',
+        check: async ({ calls }) => {
+            const { arrow, projectile } = await huntersArrow();
+            return {
+                newArrow: !!arrow,
+                // For a bow: flagged NonBolt, as the game's arrows are; a bolt is a crossbow's.
+                anArrow: !!arrow && /^[ \t]*-[ \t]*NonBolt[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bNonBolt\b/m.test(arrow.text),
+                playable: !!arrow && !/^[ \t]*-[ \t]*NonPlayable[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bNonPlayable\b/m.test(arrow.text),
+                moreDamage: !!arrow && ammoDamage(arrow.text) > truth.steelArrow.damage,
+                modelInGame: !!arrow && await modelInGame('HuntersArrow', arrow.text),
+                // Flies as a projectile the game draws.
+                projectileInGame: !!projectile && await modelInGame('HuntersArrow', projectile),
+                noOverride: noOverride('HuntersArrow'),
+                built: builtProject('HuntersArrow', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const { arrow } = await huntersArrow();
+            return {
+                ...await TASKS.find(t => t.id === 'arrow').check({ calls }),
+                damage16: ammoDamage(arrow?.text) === 16,
+                valueOf4: fieldIs(arrow?.text, 'Value', 4)
+            };
+        }
+    },
+    // A shout (since round 125, the user's wish): three words of power, each casting a spell of the voice.
+    {
+        id: 'shout',
+        skill: 'skyrim-modding-magic',
+        prompt: 'Make a new mod called ThunderRoar with a new dragon shout named "Thunder Roar" that deals shock damage ' +
+            'to the enemies in front of the player. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called ThunderRoar with a new dragon shout named "Thunder Roar". Make it like Fire ' +
+            'Breath — three words, each shouted at what is in front of the player — but dealing shock damage, with three ' +
+            'words of power of its own: "Kreh" (Thunder), "Dahl" (Strike) and "Vund" (Storm). The first word deals 20 ' +
+            'points of shock damage, the second 40 and the third 60, and the shout recovers in 15, 30 and 45 seconds. ' +
+            'Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { shout, words } = await thunderRoar();
+            return {
+                newShout: !!shout,
+                threeWords: words.length === 3 && words.every(w => w.wordText && w.spellText),
+                // Each word's spell a shout's, the voice's: a spell of another type cast from a shout does nothing.
+                voiceSpells: words.length > 0 && words.every(w => /^Type:[ \t]*Voice[ \t]*\r?$/m.test(w.spellText)),
+                shockDamage: words.length > 0 && words.every(w => shockDealt(w) > 0),
+                noOverride: noOverride('ThunderRoar'),
+                built: builtProject('ThunderRoar', calls)
+            };
+        },
+        // The words it names, the project's own and translated, and each word's damage and recovery.
+        detailedCheck: async ({ calls }) => {
+            const { words } = await thunderRoar();
+            const named = (got, want) => got.length === want.length && want.every((w, i) => got[i]?.toLowerCase() === w.toLowerCase());
+            return {
+                ...await TASKS.find(t => t.id === 'shout').check({ calls }),
+                ownWords: words.length === 3 && words.every(w => w.ownWord) &&
+                    named(words.map(w => nameOf(w.wordText)), ['Kreh', 'Dahl', 'Vund']),
+                translated: named(words.map(w => translatedValue(w.wordText, 'Translation') ?? ''), ['Thunder', 'Strike', 'Storm']),
+                damage20to60: named(words.map(w => String(shockDealt(w))), ['20', '40', '60']),
+                recovery15to45: named(words.map(w => String(w.recovery)), ['15', '30', '45'])
+            };
+        }
+    },
+    // A magic effect of the mod's own (since round 125, the user's wish): the tasks before reuse the game's.
+    {
+        id: 'effect',
+        skill: 'skyrim-modding-magic',
+        prompt: 'Make a new mod called FeatherStep with a new Alteration spell named "Feather Step" that lets the caster ' +
+            'carry more for a while, with a new magic effect of its own. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called FeatherStep with a new spell named "Feather Step" that the caster casts on ' +
+            'themselves, like Oakflesh: Alteration, Novice level. Give it a new magic effect of its own, named "Feather ' +
+            'Step", that raises the caster\'s carry weight by 100 for 60 seconds, after which it is what it was. Build it, ' +
+            'but do not deploy it.',
+        check: async ({ calls }) => {
+            const { spell, own } = await featherStep();
+            return {
+                newSpell: !!spell,
+                ownEffect: own.length > 0,
+                raisesCarryWeight: own.some(({ text }) => CARRY.test(text) && !DETRIMENTAL.test(text)),
+                alteration: own.some(({ text }) => /^MagicSkill:[ \t]*Alteration[ \t]*\r?$/m.test(text)),
+                // For a while: the carry weight given back when the effect ends, or raised for good.
+                givesItBack: own.some(({ text }) => CARRY.test(text) && RECOVER.test(text)),
+                // Self, the default the serializer leaves out: the game's Oakflesh has no TargetType line.
+                onTheCaster: !!spell && (!/^TargetType:/m.test(spell.text) || /^TargetType:[ \t]*Self[ \t]*\r?$/m.test(spell.text)),
+                noOverride: noOverride('FeatherStep'),
+                built: builtProject('FeatherStep', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const { own } = await featherStep();
+            return {
+                ...await TASKS.find(t => t.id === 'effect').check({ calls }),
+                effectNamed: own.some(({ text }) => /^feather step$/i.test(nameOf(text))),
+                by100For60s: own.some(({ text, magnitude, duration }) => CARRY.test(text) && magnitude === 100 && duration === 60)
+            };
+        }
+    },
+    // A leveled list (since round 125, the user's pick): a game list changed in a copy, keeping what it holds — the edit
+    // two mods of one list conflict on.
+    {
+        id: 'leveled',
+        skill: 'skyrim-modding-leveled-lists',
+        prompt: 'Make a new mod called BanditSilver in which bandits can also carry silver swords. Build it, but do not ' +
+            'deploy it.',
+        detailed: 'Make a new mod called BanditSilver in which bandits can also carry the Silver Sword: add it, at level 1, ' +
+            'to the leveled list the bandits\' one-handed weapons come from, keeping everything that list already holds. ' +
+            'Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const lists = await banditLists();
+            const silver = lists.filter(list => list.entries.some(e => truth.silverSword.formIds.includes(e.formKey)));
+            return {
+                banditListChanged: silver.length > 0,
+                // Added to, not replaced: every entry the game's list has is in the copy.
+                keepsItsEntries: silver.length > 0 && silver.every(list => keepsEntries(list.entries, list.theirs)),
+                built: builtProject('BanditSilver', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const lists = await banditLists();
+            return {
+                ...await TASKS.find(t => t.id === 'leveled').check({ calls }),
+                atLevel1: lists.some(list => list.entries.some(e => truth.silverSword.formIds.includes(e.formKey) && e.level === 1)),
+                aOneHandedList: lists.some(list => /1H|OneHand/i.test(/^EditorID:[ \t]*(\S+)/m.exec(list.text)?.[1] ?? '')
+                    && list.entries.some(e => truth.silverSword.formIds.includes(e.formKey)))
+            };
+        }
+    },
+    // Placed in the world (since round 125, the user's pick): a chest in a game cell, holding things.
+    {
+        id: 'world',
+        // No skill places things in the world yet: the basics, until one does.
+        skill: 'skyrim-modding-basics',
+        prompt: 'Make a new mod called BreezehomeChest that puts a chest in Breezehome holding 500 gold and a Steel Sword. ' +
+            'Build it, but do not deploy it.',
+        detailed: 'Make a new mod called BreezehomeChest that puts a new chest of its own, named "Hunter\'s Chest", in ' +
+            'Breezehome\'s main room. Make it like the chests of the player\'s houses, whose contents never respawn, holding ' +
+            '500 gold, a Steel Sword and 10 Steel Arrows. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const chests = await breezehomeChests();
+            const filled = chests.filter(chest => holds(chest, 'Gold001') === 500 && holds(chest, truth.steelSword.editorId) === 1);
+            return {
+                chestInBreezehome: chests.length > 0,
+                holdsGoldAndSword: filled.length > 0,
+                built: builtProject('BreezehomeChest', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const chests = (await breezehomeChests()).filter(chest => chest.own && /^hunter'?s chest$/i.test(nameOf(chest.text)));
+            return {
+                ...await TASKS.find(t => t.id === 'world').check({ calls }),
+                ownChestNamed: chests.length > 0,
+                tenSteelArrows: chests.some(chest => holds(chest, 'SteelArrow') === 10),
+                // A house chest keeps what the player puts in: one flagged Respawns empties itself and fills up again.
+                neverRespawns: chests.length > 0 && chests.every(chest => !/^[ \t]*-[ \t]*Respawns[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bRespawns\b/m.test(chest.text))
+            };
+        }
+    },
+    // A perk (since round 125, the user's pick): an entry point that changes a value, under conditions.
+    {
+        id: 'perk',
+        // No skill writes perks yet: the basics, until one does.
+        skill: 'skyrim-modding-basics',
+        prompt: 'Make a new mod called SteadyAim with a new perk named "Steady Aim" that makes the player\'s bows deal 20% ' +
+            'more damage. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called SteadyAim with a new perk named "Steady Aim". Make it like the first rank of ' +
+            'Overdraw — it changes the damage of attacks with a bow — but the player\'s bows deal 30% more damage, and only ' +
+            'while the player is sneaking. It requires an Archery skill of 30. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const perk = steadyAim();
+            return {
+                newPerk: !!perk,
+                playable: !!perk && !/^Playable:[ \t]*false/mi.test(perk.text),
+                changesAttackDamage: !!perk && changesDamage(perk.text),
+                by20Percent: Math.abs((damageMultiple(perk?.text) ?? 0) - 1.2) < 1e-6,
+                // With a bow, as Overdraw: its entry's condition names the bow's keyword or type.
+                withBows: !!perk && /WeapTypeBow|\b0001E715\b|01E715:Skyrim\.esm|EquippedItemType|Bow\b/.test(blockOf(perk.text, 'Effects')),
+                noOverride: noOverride('SteadyAim'),
+                built: builtProject('SteadyAim', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const perk = steadyAim();
+            const { by20Percent, ...rest } = await TASKS.find(t => t.id === 'perk').check({ calls });
+            void by20Percent;
+            return {
+                ...rest,
+                by30Percent: Math.abs((damageMultiple(perk?.text) ?? 0) - 1.3) < 1e-6,
+                whileSneaking: !!perk && /IsSneaking/.test(blockOf(perk.text, 'Effects')),
+                // Archery 30 needed: the perk's own conditions ask the player's Archery (Marksman) skill for 30.
+                archery30: !!perk && /Marksman|Archery/.test(blockOf(perk.text, 'Conditions')) &&
+                    /^[ \t]+ComparisonValue:[ \t]*30(?:\.0+)?[ \t]*\r?$/m.test(blockOf(perk.text, 'Conditions'))
+            };
+        }
+    },
+    // A quest with a Papyrus script (since round 125, the user's pick): started with the game, its script compiled by the build.
+    {
+        id: 'quest',
+        skill: 'skyrim-modding-basics',
+        prompt: 'Make a new mod called StarterGold that gives the player 500 gold when a new game starts. Build it, but do ' +
+            'not deploy it.',
+        detailed: 'Make a new mod called StarterGold with a quest of its own named "Starter Gold" that starts with the ' +
+            'game and runs once: its script gives the player 500 gold and a Steel Sword when the quest starts, then stops ' +
+            'the quest. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { quests, sources, compiled } = starterGold();
+            const scripted = quests.map(q => ({ quest: q, scripts: attachedScripts(q.text) }))
+                .filter(q => q.scripts.names.some(name => sources.some(s => s.name === name)));
+            const source = name => sources.find(s => s.name === name)?.text ?? '';
+            const code = scripted.flatMap(q => q.scripts.names.map(source)).join('\n');
+            return {
+                newQuest: quests.length > 0,
+                startsWithGame: quests.some(q => /^[ \t]*-[ \t]*StartGameEnabled[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bStartGameEnabled\b/m.test(q.text)),
+                scriptAttached: scripted.length > 0,
+                scriptCompiled: scripted.some(q => q.scripts.names.some(name => compiled.includes(name))),
+                // 500 gold to the player: an AddItem of 500 on the player, with the gold the game's (Gold001, 00000F).
+                gives500Gold: /AddItem\s*\([^,()]+,\s*500\b/i.test(code) && /GetPlayer\s*\(|PlayerRef/i.test(code) &&
+                    (scripted.some(q => q.scripts.links.some(l => /^0*0000F:Skyrim\.esm$|^Gold001$/i.test(l))) || /0x0*F\b|Gold001/i.test(code)),
+                noOverride: noOverride('StarterGold'),
+                built: builtProject('StarterGold', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const { quests, sources } = starterGold();
+            const code = sources.map(s => s.text).join('\n');
+            return {
+                ...await TASKS.find(t => t.id === 'quest').check({ calls }),
+                questNamed: quests.some(q => /^starter gold$/i.test(nameOf(q.text))),
+                runsOnce: quests.some(q => /^[ \t]*-[ \t]*RunOnce[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bRunOnce\b/m.test(q.text)),
+                givesSteelSword: /AddItem\s*\(/i.test(code) && (/SteelSword|0x0*13989\b/i.test(code) ||
+                    quests.some(q => attachedScripts(q.text).links.some(l => /^0*13989:Skyrim\.esm$|^SteelSword$/i.test(l)))),
+                stopsTheQuest: /\bStop\s*\(\s*\)/i.test(code)
             };
         }
     },
@@ -907,6 +1615,39 @@ async function warmUp() {
     }
     return { seconds, wasLoaded: resident };
 }
+/**
+ * --check <folder>: the checks alone, no model run. Each folder in it is a projects folder made by hand, named
+ * `<task>[+detailed]--<what it is>` and holding that task's project, built; its checks run on it as on a run's projects,
+ * after a build that succeeded. A correct mod passes every check; a broken one fails the check its fault is for — the
+ * checks of the tasks added in round 125 were tried so before a model ran them. The record goes to --out.
+ */
+async function checkCases(folder) {
+    const variants = TASKS.flatMap(t => [t, ...t.detailed ? [{ ...t, id: `${t.id}+detailed`, prompt: t.detailed, check: t.detailedCheck ?? t.check }] : []]);
+    const checked = [];
+    for (const name of fs.readdirSync(folder, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()) {
+        const task = variants.find(t => t.id === name.split('--')[0]);
+        if (!task) {
+            console.log(`check ${name}: no task ${name.split('--')[0]}`);
+            continue;
+        }
+        projectsDir = path.resolve(folder, name);
+        const project = fs.readdirSync(projectsDir).find(entry => fs.existsSync(path.join(projectsDir, entry, 'plugin')));
+        const calls = [{ name: 'buildProject', args: { project }, isError: false, result: '{"status":"success"}' }];
+        const result = await resultOf(task, 0, { answer: '', calls, stop: 'answered', turns: [], started: Date.now(), phases: {} });
+        const failed = Object.entries(result.checks).filter(([, ok]) => !ok).map(([check]) => check);
+        console.log(`check ${name}: ${result.success ? 'PASS' : 'FAIL'}${failed.length ? ` — failed: ${failed.join(', ')}` : ''}` +
+            (result.facts ? ` (facts ${JSON.stringify(result.facts)})` : ''));
+        checked.push({ case: name, success: result.success, failed, checks: result.checks, facts: result.facts });
+    }
+    fs.writeFileSync(outFile, `${JSON.stringify(checked, null, 2)}\n`);
+}
+if (opt.check) {
+    await checkCases(path.resolve(opt.check)).catch(error => fail(`the checks failed: ${error.stack ?? error.message}`));
+    cleanUp();
+    await stopBackends();
+    process.exit(0);
+}
+
 const warmup = await warmUp().catch(error => fail(`the warm-up failed: ${error.message}`));
 
 try {

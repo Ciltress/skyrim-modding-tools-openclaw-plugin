@@ -60,7 +60,7 @@ import {
     builtAfterLastChange, dealtDamage, firstPersonModelOf, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
     overridesIn, providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
-import { leftEscape, translatedValue } from './eval-yaml.mjs';
+import { leftEscape, lineShape, textValue, translatedValue } from './eval-yaml.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -276,9 +276,11 @@ const truth = {
     // has to carry over exactly.
     mavenNote: await (async () => {
         const read = await callServerJson('readRecord', { record: 'LetterRiftenBlackBriarMeadery04' });
-        const text = translatedValue(read.versions[0].files.map(f => f.text).join('\n'), 'BookText');
+        const file = read.versions[0].files.map(f => f.text).join('\n');
+        const text = translatedValue(file, 'BookText');
         if (!text?.includes('"')) fail('could not read the text of Note From Maven');
-        return { formId: read.formId, text };
+        // Its lines and empty lines, which textCopied does not count: x-x-x.
+        return { formId: read.formId, text, shape: lineShape(textValue(file, 'BookText')) };
     })()
 };
 
@@ -675,7 +677,11 @@ const TASKS = [
                 // Round 98's note #3 built on Clutter\Books\NotePlaceholder.nif, which the game does not have.
                 modelInGame: !!note && await modelInGame('MavenNote', note.text),
                 noOverride: noOverride('MavenNote'),
-                built: builtProject('MavenNote', calls)
+                built: builtProject('MavenNote', calls),
+                // Recorded, not scored (the user, 2026-11-04): whether the copy has the note's lines and empty lines. In
+                // game a copy without its empty lines runs its parts together — 170 of 357 copies of rounds 87–123,
+                // read with two blank lines for each empty line, wrote one.
+                ...(note ? { facts: { emptyLinesKept: lineShape(textValue(note.text, 'BookText') ?? '') === truth.mavenNote.shape } } : {})
             };
         }
     },
@@ -822,7 +828,8 @@ async function runTask(task, run) {
 /** A run's record: the checks and the counts. */
 async function resultOf(task, run, { answer, calls, stop, turns, started, phases, client }) {
     const checking = Date.now();
-    const checks = stop === 'answered' || stop === 'maxTurns'
+    // A task's facts are recorded beside its checks and count for nothing.
+    const { facts, ...checks } = stop === 'answered' || stop === 'maxTurns'
         ? await task.check({ answer, calls })
         : {};
     // Every task that leaves record files is held to them having no escapes a copy should have decoded.
@@ -840,6 +847,7 @@ async function resultOf(task, run, { answer, calls, stop, turns, started, phases
         run,
         success: Object.keys(checks).length > 0 && Object.values(checks).every(Boolean),
         checks,
+        ...(facts ? { facts } : {}),
         ...(copies.length ? { unchangedCopies: copies } : {}),
         stop,
         turns: turns.length,
@@ -1096,6 +1104,7 @@ if (speed) console.log(`eval: prompt ${rate(speed.promptPerSecond)} (${speed.pro
 
 // The entry for docs/research/local-model-evals.md, where every round is recorded. The client — the plugin in
 // OpenClaw — and the Ollama build, or the OpenAI server, are named beside the profile.
+const notesWritten = results.filter(r => r.facts && 'emptyLinesKept' in r.facts);
 const setup = [`\`${report.profile}\``, 'OpenClaw plugin', ...(OPENAI ? [SERVER_NAME] : ollamaVersion ? [`Ollama ${ollamaVersion}`] : [])].join(', ');
 const openClawTools = !first ? '? tools'
     : `${first.tools} tools, ${first.pluginToolsListed} of them the plugin's${first.toolSearch ? ', the rest behind Tool Search' : ''}`;
@@ -1113,7 +1122,9 @@ const entry = [
     `runs, the text-call check asked for a call in ${openClawSummary.textCallAsked}, the announced-step check for its step ` +
     `in ${openClawSummary.announcedAsked}, and OpenClaw dropped ` +
     `${openClawSummary.buildCheckDropped} of those passes. Outside the turns a run took on average ` +
-    `${PHASES.map(([key, name]) => `${openClawSummary.phases[key] ?? '?'} s ${name}`).join(', ')}.`,
+    `${PHASES.map(([key, name]) => `${openClawSummary.phases[key] ?? '?'} s ${name}`).join(', ')}.` +
+    (notesWritten.length ? ` Of the ${notesWritten.length} notes written, ${notesWritten.filter(r => r.facts.emptyLinesKept).length} ` +
+        "kept the game's empty lines (recorded, not scored)." : ''),
     '',
     '| task | passed | turns | calls | invalid arguments | other errors | largest prompt (tokens) | seconds |',
     '|---|---|---|---|---|---|---|---|',

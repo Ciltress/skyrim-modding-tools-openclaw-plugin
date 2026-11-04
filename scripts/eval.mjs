@@ -830,6 +830,74 @@ function attachedScripts(text) {
     };
 }
 
+/** A VirtualMachineAdapter's object properties: each Name with the Object written after it. */
+function scriptProperties(text) {
+    const properties = [];
+    let name = null;
+    for (const line of blockOf(text, 'VirtualMachineAdapter').split(/\r?\n/)) {
+        const named = /^[ \t]*-?[ \t]*Name:[ \t]*(\w+)/.exec(line);
+        if (named) { name = named[1]; continue; }
+        const object = /^[ \t]*-?[ \t]*Object:[ \t]*([^\s#]+)/.exec(line);
+        if (object && name) { properties.push({ name: name.toLowerCase(), object: object[1] }); name = null; }
+    }
+    return properties;
+}
+
+/**
+ * The code the game runs of a quest's script: the events it sends a quest (OnInit, OnReset, OnStory…; OnUpdate… once
+ * registered), its stage fragments where the quest names fragments, and the functions these call. Papyrus compiles an
+ * event of any name, and one the game never sends never runs: eval round 125's quest+detailed #2 gave its gold in
+ * OnQuestInit. A script attached to a quest runs only if it extends Quest.
+ */
+function questCode(source, questText) {
+    if (!/^[ \t]*ScriptName[ \t]+\w+[ \t]+extends[ \t]+Quest\b/im.test(source)) return '';
+    const blocks = [...source.matchAll(/^[ \t]*(?:\w+(?:\[\])?[ \t]+)?(Event|Function)[ \t]+(\w+)[ \t]*\([^)]*\)([\s\S]*?)^[ \t]*End(?:Event|Function)\b/gim)]
+        .map(m => ({ kind: m[1].toLowerCase(), name: m[2].toLowerCase(), body: m[3] }));
+    const registered = /RegisterFor(?:Single)?Update(?:GameTime)?\s*\(/i.test(source);
+    const fragments = /Fragment/i.test(blockOf(questText, 'VirtualMachineAdapter'));
+    const reached = new Set(blocks.filter(b => b.kind === 'event'
+        ? /^(oninit|onreset|onstory\w+)$/.test(b.name) || (registered && /^onupdate(gametime)?$/.test(b.name))
+        : fragments && /^fragment_\d+$/.test(b.name)));
+    for (let grew = true; grew;) {
+        grew = false;
+        for (const b of blocks) {
+            if (reached.has(b) || b.kind !== 'function') continue;
+            if ([...reached].some(r => new RegExp(`(^|[^\\w])${b.name}\\s*\\(`, 'i').test(r.body))) { reached.add(b); grew = true; }
+        }
+    }
+    return [...reached].map(b => b.body).join('\n');
+}
+
+/**
+ * Whether a quest's script gives the player an item the game runs it to give: an AddItem in the code the game runs (see
+ * questCode), on the player, of the form by its number (Game.GetForm / GetFormFromFile, or a variable set so) or of a
+ * property the script declares and the quest fills with the form. A plain variable of that name is None in game:
+ * round 125's quest+detailed #5 declared `Form GoldCoins`.
+ */
+function givesItem(source, questText, { formId, editorId, count }) {
+    const code = questCode(source, questText);
+    const properties = scriptProperties(questText);
+    const player = /GetPlayer\s*\(/i.test(code) ||
+        (/\bPlayerRef\b/i.test(code) && /\bProperty[ \t]+PlayerRef\b/i.test(source) &&
+            properties.some(p => p.name === 'playerref' && /^0*14:Skyrim\.esm$|^PlayerRef$/i.test(p.object)));
+    if (!player) return false;
+    const local = formId.split(':')[0].replace(/^0+/, '');
+    const byNumber = new RegExp(`GetForm(?:FromFile)?\\s*\\(\\s*0x0*${local}\\b`, 'i');
+    const filled = new RegExp(`^0*${local}:Skyrim\\.esm$|^${editorId}$`, 'i');
+    const adds = new RegExp(`AddItem\\s*\\(\\s*([^,()]+?|[^,]*\\([^)]*\\)[^,]*?)\\s*${count ? `,\\s*${count}\\b` : '(?:,|\\))'}`, 'gi');
+    for (const m of code.matchAll(adds)) {
+        const argument = m[1].trim();
+        if (byNumber.test(argument)) return true;
+        const id = /^(?:self\.)?(\w+)$/i.exec(argument)?.[1];
+        if (!id) continue;
+        if (new RegExp(`\\bProperty[ \\t]+${id}\\b`, 'i').test(source) &&
+            properties.some(p => p.name === id.toLowerCase() && filled.test(p.object))) return true;
+        const set = new RegExp(`\\b${id}\\s*=\\s*([^\\r\\n]+)`, 'i').exec(source);
+        if (set && byNumber.test(set[1])) return true;
+    }
+    return false;
+}
+
 /** A number at the margin as written, a comment after it YAML's, not the value's: `Value: 200 # Requested`. */
 const fieldIs = (text, field, number) =>
     new RegExp(`^${field}:[ \\t]*(['"]?)${number}(?:\\.0+)?\\1(?:[ \\t]+#.*)?[ \\t]*\\r?$`, 'm').test(text ?? '');
@@ -1280,29 +1348,30 @@ const TASKS = [
             const scripted = quests.map(q => ({ quest: q, scripts: attachedScripts(q.text) }))
                 .filter(q => q.scripts.names.some(name => sources.some(s => s.name === name)));
             const source = name => sources.find(s => s.name === name)?.text ?? '';
-            const code = scripted.flatMap(q => q.scripts.names.map(source)).join('\n');
             return {
                 newQuest: quests.length > 0,
                 startsWithGame: quests.some(q => /^[ \t]*-[ \t]*StartGameEnabled[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bStartGameEnabled\b/m.test(q.text)),
                 scriptAttached: scripted.length > 0,
                 scriptCompiled: scripted.some(q => q.scripts.names.some(name => compiled.includes(name))),
-                // 500 gold to the player: an AddItem of 500 on the player, with the gold the game's (Gold001, 00000F).
-                gives500Gold: /AddItem\s*\([^,()]+,\s*500\b/i.test(code) && /GetPlayer\s*\(|PlayerRef/i.test(code) &&
-                    (scripted.some(q => q.scripts.links.some(l => /^0*0000F:Skyrim\.esm$|^Gold001$/i.test(l))) || /0x0*F\b|Gold001/i.test(code)),
+                // 500 gold to the player, the game's (Gold001, 00000F), in code the game runs (see givesItem).
+                gives500Gold: scripted.some(q => q.scripts.names.some(name =>
+                    givesItem(source(name), q.quest.text, { formId: '00000F:Skyrim.esm', editorId: 'Gold001', count: 500 }))),
                 noOverride: noOverride('StarterGold'),
                 built: builtProject('StarterGold', calls)
             };
         },
         detailedCheck: async ({ calls }) => {
             const { quests, sources } = starterGold();
-            const code = sources.map(s => s.text).join('\n');
+            // Each attached script with its quest, as the game runs them.
+            const pairs = quests.flatMap(q => attachedScripts(q.text).names
+                .map(name => ({ quest: q.text, source: sources.find(s => s.name === name)?.text }))
+                .filter(p => p.source));
             return {
                 ...await TASKS.find(t => t.id === 'quest').check({ calls }),
                 questNamed: quests.some(q => /^starter gold$/i.test(nameOf(q.text))),
                 runsOnce: quests.some(q => /^[ \t]*-[ \t]*RunOnce[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bRunOnce\b/m.test(q.text)),
-                givesSteelSword: /AddItem\s*\(/i.test(code) && (/SteelSword|0x0*13989\b/i.test(code) ||
-                    quests.some(q => attachedScripts(q.text).links.some(l => /^0*13989:Skyrim\.esm$|^SteelSword$/i.test(l)))),
-                stopsTheQuest: /\bStop\s*\(\s*\)/i.test(code)
+                givesSteelSword: pairs.some(p => givesItem(p.source, p.quest, { formId: '013989:Skyrim.esm', editorId: 'SteelSword' })),
+                stopsTheQuest: pairs.some(p => /(^|[^\w.]|\bself\.)Stop\s*\(\s*\)/i.test(questCode(p.source, p.quest)))
             };
         }
     },

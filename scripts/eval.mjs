@@ -10,8 +10,11 @@
  *                         [--authoring-runs 5] [--tasks find,read] [--max-turns 25] [--think true|false|<level>]
  *                         [--detailed] [--out <file>] [--ollama http://localhost:11434] [--settle 60]
  *                         [--provider ollama|<provider>] [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
+ *                         [--all-plugins]
  *
  * The agent is --openclaw-agent, else the plugin's only modding agent, else the configuration's only agent.
+ * A run loads this plugin and its provider's alone (`plugins.allow`): with all of the configuration's, OpenClaw's start
+ * was 119 of round 128's 231 minutes. --all-plugins loads every plugin the configuration has, as the user's gateway does.
  * --provider names the model's provider in OpenClaw's configuration: `ollama` (the default) is Ollama at --ollama;
  * another is a server with OpenAI's API, an `openai-completions` provider (--provider <its id> --model <the model id
  * it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
@@ -100,6 +103,7 @@ const { values: opt } = parseArgs({
         openclaw: { type: 'string' },
         'openclaw-config': { type: 'string' },
         'openclaw-agent': { type: 'string' },
+        'all-plugins': { type: 'boolean', default: false },
         check: { type: 'string' }
     }
 });
@@ -222,7 +226,7 @@ const openClaw = await (async () => {
     try {
         session = writeSessionConfig({
             dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir, crashLogDir,
-            agent: opt['openclaw-agent'], profile: opt.profile
+            agent: opt['openclaw-agent'], profile: opt.profile, allPlugins: opt['all-plugins']
         });
     } catch (error) {
         fail(error.message);
@@ -284,7 +288,8 @@ console.log(`eval: ${opt.model} @ num_ctx ${CTX ?? 'Ollama default'}, profile ${
 console.log(`eval: through ${openClaw.version} (${openClaw.entry}), on the configuration ${openClaw.configFile}` +
     `${openClaw.agentId ? `, agent '${openClaw.agentId}'` : ''}` +
     `${openClaw.workspaceFiles.length ? ` with ${openClaw.workspaceFiles.map(f => f.name).join(', ')}` : ''}` +
-    (openClaw.copiedFrom ? ` — ${opt.model} with the settings of its entry for ${openClaw.copiedFrom}` : ''));
+    (openClaw.copiedFrom ? ` — ${opt.model} with the settings of its entry for ${openClaw.copiedFrom}` : '') +
+    `, ${openClaw.plugins ? `the plugins ${openClaw.plugins.join(' and ')} alone` : 'all its plugins'}`);
 console.log('eval: reading the ground truth from the instance (the first lookup builds the index)…');
 const truth = {
     ironSword: await weapon('IronSword'),
@@ -1892,6 +1897,7 @@ const openClawSummary = (() => {
         ...(openClaw.agentId ? { agent: openClaw.agentId } : {}),
         workspaceFiles: openClaw.workspaceFiles.map(f => f.name),
         ...(openClaw.copiedFrom ? { modelSettingsFrom: openClaw.copiedFrom } : {}),
+        plugins: openClaw.plugins ?? 'all',
         firstPrompt: results.find(r => r.client?.firstPrompt)?.client.firstPrompt ?? null,
         firstPromptTokens: Math.max(0, ...firsts.map(t => t.promptTokens)),
         medianFirstTokenSeconds: firstTokens.length ? firstTokens[Math.floor(firstTokens.length / 2)] : null,
@@ -1970,7 +1976,8 @@ const entry = [
     `| ${report.when.slice(0, 10)} | ${report.model} | ${setup} | ${report.build} | ${passed}/${results.length} | ` +
     `${report.secondsPerTurn ?? '?'} s | ${rate(speed?.promptPerSecond)} | ${rate(speed?.generationPerSecond)} | ${onGpu} |`,
     '',
-    `Through ${openClawSummary.version}: first prompt ${openClawSummary.firstPromptTokens} tokens (${openClawTools}), ` +
+    `Through ${openClawSummary.version}${openClaw.plugins ? ` with the plugins ${openClaw.plugins.join(' and ')} alone` : ' with all its plugins'}: ` +
+    `first prompt ${openClawSummary.firstPromptTokens} tokens (${openClawTools}), ` +
     `the plugin's instructions in ${results.length - openClawSummary.instructionsMissing} of ${results.length} prompts, ` +
     `think ${report.think}, num_ctx ${report.numCtx}, num_predict ${first?.numPredict ?? 'none'}, ` +
     `temperature ${first?.temperature ?? (OPENAI ? "the server's" : "the Modelfile's")}, ` +

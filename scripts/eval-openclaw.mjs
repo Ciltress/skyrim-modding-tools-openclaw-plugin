@@ -268,7 +268,8 @@ function holdsPlugin(folder) {
  * OpenAI server's window), the model entry copied when the model had none, the agent, its workspace files, and the
  * plugin's config — the settings the eval's own reads of the instance use too.
  */
-export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, agent, profile }) {
+export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, agent, profile,
+    allPlugins = false }) {
     let config;
     try {
         config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -366,6 +367,11 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     config.plugins.load.paths = [...load.filter(folder => path.resolve(folder) !== path.resolve(root) && !holdsPlugin(folder)), root];
     plugin.config = { ...plugin.config, projectsDir, ...(crashLogDir ? { crashLogDir } : {}), ...(agentId ? { agents: [agentId] } : {}), ...(profile ? { profile } : {}) };
     if (config.mcp?.servers) config.mcp.servers = {};
+    // The plugins a run loads: this one and its model's provider's — not the user's others, search, ComfyUI, voice. Each run
+    // started all of them: OpenClaw's start was 119 of round 128's 231 minutes, the model's turns 75. --all-plugins keeps them.
+    const plugins = allPlugins ? undefined
+        : [...new Set([PLUGIN_ID, provider.api === 'ollama' ? 'ollama' : /^openai/.test(provider.api ?? '') ? 'openai' : providerId])];
+    if (plugins) config.plugins.allow = plugins;
 
     config.tools ??= {};
     config.tools.deny = [...new Set([...(config.tools.deny ?? []), ...DENIED_TOOLS, ...NOT_ALLOWED])];
@@ -389,7 +395,7 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     const numCtx = provider.api === 'openai-completions' ? (Number(entry.contextWindow) > 0 ? Number(entry.contextWindow) : undefined)
         : Number(entry.params?.num_ctx) > 0 ? Number(entry.params.num_ctx)
             : Number(entry.contextTokens) > 0 ? Number(entry.contextTokens) : undefined;
-    return { file, numCtx, copiedFrom, agentId, workspaceFiles, pluginConfig: plugin.config };
+    return { file, numCtx, copiedFrom, agentId, workspaceFiles, pluginConfig: plugin.config, plugins };
 }
 
 /** Ends a process and what it started — OpenClaw and the plugin's helper — which Windows leaves running. */

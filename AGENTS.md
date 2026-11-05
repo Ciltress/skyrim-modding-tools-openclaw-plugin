@@ -122,7 +122,9 @@ beside the repositories, where every round is recorded. The output is a local mo
 what the tools or their answers could do better. `agent exec` loads plugins in registrationMode `discovery` (tools
 and hooks run, the service does not; the helper ends with the run) and takes the `coding` tool profile where the
 config sets none, which hides every native plugin tool — the session config sets `full`, what an unset profile is
-in the gateway. The config copy holds the Nexus key: it lives in a temp folder of its own, deleted at the end.
+in the gateway. A run loads this plugin and its model's provider's alone (`plugins.allow`), which cut OpenClaw's
+start by a third; `--all-plugins` loads every plugin of the config, as the gateway does. The config copy holds the
+Nexus key: it lives in a temp folder of its own, deleted at the end.
 
 ## Care with a real backend
 

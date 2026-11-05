@@ -162,6 +162,24 @@ describe('writeSessionConfig', () => {
         expect(numCtx).toBe(131072);
         expect(() => session(userConfig(), { agent: 'skyrim-e4b', provider: 'strata' })).toThrow(/no provider 'strata'/);
     });
+
+    it('loads this plugin and its model\'s provider\'s alone, and every plugin with allPlugins', () => {
+        // Each run started all of the configuration's plugins: OpenClaw's start was half of round 128's time.
+        const ollama = session(userConfig(), { agent: 'skyrim-e4b' });
+        expect(ollama.plugins).toEqual(['skyrim-modding-tools', 'ollama']);
+        expect(ollama.written.plugins.allow).toEqual(['skyrim-modding-tools', 'ollama']);
+        const strata = userConfig(config => {
+            config.models.providers.strata = { baseUrl: 'http://127.0.0.1:8080/v1', api: 'openai-completions', models: [{ id: 'coder' }] };
+            config.agents.entries['skyrim-strata'] = { workspace, model: { primary: 'strata/coder', fallbacks: [] } };
+            return config;
+        });
+        expect(session(strata, { agent: 'skyrim-strata', provider: 'strata', model: 'coder' }).written.plugins.allow)
+            .toEqual(['skyrim-modding-tools', 'openai']);
+        const all = session(userConfig(config => { config.plugins.allow = ['skyrim-modding-tools', 'ollama', 'comfy']; return config; }),
+            { agent: 'skyrim-e4b', allPlugins: true });
+        expect(all.plugins).toBeUndefined();
+        expect(all.written.plugins.allow).toEqual(['skyrim-modding-tools', 'ollama', 'comfy']);
+    });
 });
 
 describe('providerServer', () => {

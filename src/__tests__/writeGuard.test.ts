@@ -191,6 +191,24 @@ describe('WriteGuard', () => {
         expect(g.beforeToolCall(call('edit', { path: file, edits: [{ oldText: 'a', newText: 'b' }] }), agent)).toBeUndefined();
         expect(g.beforeToolCall(call('write', { path: path.join(path.dirname(file), 'Helga.yaml'), content: rewritten }), agent)).toBeUndefined();
     });
+
+    it('keeps the FormKey below the line that names the record\'s kind, as the build writes it', () => {
+        // Put above `MutagenObjectType: PlacedObject`, the mini-round after eval round 128's world+detailed #2 chest reference was
+        // refused "Object reference not set" twice, and its run ended unbuilt.
+        project('BreezehomeChest');
+        const cell = path.join(projects, 'BreezehomeChest', 'plugin', 'Cells', '0', '6', 'WhiterunBreezehome - 0165A8_Skyrim.esm');
+        const file = path.join(cell, 'Temporary', 'HuntersChestRef.yaml');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, 'MutagenObjectType: PlacedObject\nFormKey: 000800:BreezehomeChest.esp\nEditorID: HuntersChestRef\nBase: HuntersChest\n');
+        const g = guard();
+        g.afterToolCall(call('buildProject', { project: 'BreezehomeChest' }), agent);
+        const rewritten = 'MutagenObjectType: PlacedObject\nEditorID: HuntersChestRef\nBase: HuntersChest\nPlacement:\n  Position: -431.5, 525.6, 64\n';
+
+        expect(g.beforeToolCall(call('write', { path: file, content: rewritten }), agent)).toEqual({ params: {
+            content: 'MutagenObjectType: PlacedObject\nFormKey: 000800:BreezehomeChest.esp\nEditorID: HuntersChestRef\nBase: HuntersChest\n' +
+                'Placement:\n  Position: -431.5, 525.6, 64\n'
+        } });
+    });
 });
 
 /** The reason a decision stops the call with; a decision that does not stop it fails the test. */

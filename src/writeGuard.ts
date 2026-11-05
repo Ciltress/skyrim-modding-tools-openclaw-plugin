@@ -109,6 +109,9 @@ export class WriteGuard {
      * content has none and names the same record: written again as the build had corrected it, the model's NPC lost the line,
      * and with no build after, the text held a record not yet numbered — another FormID at its next build — beside the plugin
      * built from it (eval round 84's npc #2). Only a FormKey of the project's own plugin: a copy's names the record it changes.
+     * Below a first line that names the record's kind, as the build writes it: put above `MutagenObjectType: PlacedObject`, a
+     * chest's reference was refused as "Object reference not set" twice, and its run ended unbuilt (the mini-round after
+     * eval round 128, world+detailed #2).
      */
     private keptFormKey(file: string, content: string): string | undefined {
         if (/^FormKey[ \t]*:/m.test(content) || !fs.existsSync(file)) return undefined;
@@ -119,7 +122,9 @@ export class WriteGuard {
         const key = /^FormKey:[ \t]*([0-9A-Fa-f]{6}:(\S+?))[ \t]*(?:#.*)?\r?$/m.exec(had);
         const editorId = (text: string) => /^EditorID:[ \t]*['"]?([^\s'"#]+)/m.exec(text)?.[1]?.toLowerCase();
         if (!plugin || !key || key[2].toLowerCase() !== plugin.toLowerCase() || !editorId(had) || editorId(had) !== editorId(content)) return undefined;
-        return `FormKey: ${key[1]}${content.includes('\r\n') ? '\r\n' : '\n'}${content}`;
+        const eol = content.includes('\r\n') ? '\r\n' : '\n';
+        const kind = /^MutagenObjectType[ \t]*:[^\r\n]*(?:\r?\n|$)/.exec(content)?.[0] ?? '';
+        return `${kind}${kind && !/\n$/.test(kind) ? eol : ''}FormKey: ${key[1]}${eol}${content.slice(kind.length)}`;
     }
 
     /** agent_end: the run is over. */

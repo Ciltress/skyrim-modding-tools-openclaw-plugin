@@ -50,6 +50,19 @@ describe('WriteGuard', () => {
             .toEqual({ params: { file_path: path.join(projects, 'StormBolt', 'plugin', 'Spells', 'StormBolt.yaml') } });
     });
 
+    it('keeps a cell\'s path for a file in it, written with or without the project\'s folder (round 128\'s world #3)', () => {
+        project('BreezehomeChest');
+        const g = guard();
+        g.afterToolCall(call('newProject', { project: 'BreezehomeChest' }), agent);
+        const cell = ['Cells', '0', '6', 'WhiterunBreezehome - 0165A8_Skyrim.esm'];
+        expect(g.beforeToolCall(call('write', { path: `plugin/${cell.join('/')}/Temporary/HuntersChestRef.yaml` }), agent))
+            .toEqual({ params: { path: path.join(projects, 'BreezehomeChest', 'plugin', ...cell, 'Temporary', 'HuntersChestRef.yaml') } });
+        expect(g.beforeToolCall(call('write', { path: `BreezehomeChest/${cell.join('/')}/Temporary/HuntersChestRef.yaml` }), agent))
+            .toEqual({ params: { path: path.join(projects, 'BreezehomeChest', 'plugin', ...cell, 'Temporary', 'HuntersChestRef.yaml') } });
+        expect(g.beforeToolCall(call('write', { path: `${cell.join('/')}/RecordData.yaml` }), agent))
+            .toEqual({ params: { path: path.join(projects, 'BreezehomeChest', 'plugin', ...cell, 'RecordData.yaml') } });
+    });
+
     it('lets a file into a project\'s plugin folder through, by a relative or a full path, and anything that is no record file', () => {
         project('MavenNote');
         const g = guard();

@@ -146,7 +146,12 @@ export class WriteGuard {
         // Where it belongs: its group folder and name in the project's plugin folder, a `plugin/` it was written under
         // without the project's folder dropped — as the build's moveRecord calls place such a file.
         const project = inProject ? parts[0] : runProject;
-        const tail = (inProject ? parts.slice(1) : parts).filter((part, i) => i > 0 || part.toLowerCase() !== 'plugin').slice(-2);
+        const inner = (inProject ? parts.slice(1) : parts).filter((part, i) => i > 0 || part.toLowerCase() !== 'plugin');
+        // A cell's file keeps the cell's path, `Cells/<block>/<sub-block>/<cell>/…`: cut to its last two parts, a reference written
+        // as `plugin/Cells/0/6/<cell>/Temporary/HuntersChestRef.yaml` went to plugin/Temporary/, where no build reads one (eval
+        // round 128's world #3 and #5, world+detailed #2).
+        const cellAt = inner.findIndex(part => /^(?:cells|worldspaces)$/i.test(part));
+        const tail = cellAt >= 0 && inner.length - cellAt >= 5 ? inner.slice(cellAt) : inner.slice(-2);
         const slashed = (target: string) => target.split(path.sep).join('/');
         const pluginDir = project ? path.join(this.projectsDir, project, 'plugin') : undefined;
         const said = `${given} is ${slashed(file)}: in the projects folder, outside every project's plugin folder, where no build ` +

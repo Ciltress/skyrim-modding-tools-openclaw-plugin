@@ -617,7 +617,27 @@ async function nordSwordRecipe() {
         .map(m => m[1]).filter(link => /^[0-9A-Fa-f]{6}:/.test(link)
             || !/^(?:Mutagen|Condition|Equal|Greater|Less|NotEqual|Subject|Target|Reference|None|True|False)/.test(link));
     const conditions = (await Promise.all(linked.map(link => editorIdOf(project, link)))).filter(Boolean);
-    return { recipe, at, materials, conditions };
+    return { recipe, at, materials, conditions, perks: await perksRequired(project, recipe.text) };
+}
+
+/**
+ * The perks a record's conditions require the player to have: a HasPerk condition the player meets with the perk — equal to
+ * 1 (EqualTo is the default the serializer leaves out), at least 1, more than 0, not 0. Since round 128: any condition
+ * naming SteelSmithing passed, and recipe+detailed #3's `CompareOperator: NotEqualTo` with 1, copied from a tempering
+ * recipe, shows the recipe only to a player without the perk.
+ */
+async function perksRequired(project, text) {
+    const required = [];
+    for (const item of entriesOf(text, 'Conditions')) {
+        if (!/\bHasPerkConditionData\b/.test(item)) continue;
+        const perk = /\bPerk:[ \t]*([^\s#,}]+)/.exec(item)?.[1];
+        const operator = /\bCompareOperator:[ \t]*(\w+)/.exec(item)?.[1] ?? 'EqualTo';
+        const value = Number(/\bComparisonValue:[ \t]*(['"]?)(-?[\d.]+)\1/.exec(item)?.[2] ?? 0);
+        const has = operator === 'EqualTo' && value === 1 || operator === 'GreaterThanOrEqualTo' && value === 1
+            || operator === 'GreaterThan' && value === 0 || operator === 'NotEqualTo' && value === 0;
+        if (has && perk) required.push(await editorIdOf(project, perk));
+    }
+    return required.filter(Boolean);
 }
 
 /** Whether a recipe's materials are just these, each as many as given: `{ IngotIron: 2, LeatherStrips: 1 }`. */
@@ -1122,12 +1142,13 @@ const TASKS = [
         },
         // Its own materials, steel for iron, and the perk.
         detailedCheck: async ({ calls }) => {
-            const { recipe, at, materials, conditions } = await nordSwordRecipe();
+            const { recipe, at, materials, perks } = await nordSwordRecipe();
             return {
                 newRecipe: !!recipe,
                 atTheForge: at?.toLowerCase() === 'craftingsmithingforge',
                 steelAndLeather: materialsAre(materials, { IngotSteel: 2, LeatherStrips: 1 }),
-                steelSmithing: conditions.some(id => id.toLowerCase() === 'steelsmithing'),
+                // Shown only to a player with the perk: a HasPerk condition the perk meets (since round 128).
+                steelSmithing: perks.some(id => id.toLowerCase() === 'steelsmithing'),
                 noOverride: noOverride('NordSwordRecipe'),
                 built: builtProject('NordSwordRecipe', calls)
             };
@@ -1218,7 +1239,8 @@ const TASKS = [
             return {
                 newSpell: !!spell,
                 ownEffect: own.length > 0,
-                raisesCarryWeight: own.some(({ text }) => CARRY.test(text) && !DETRIMENTAL.test(text)),
+                // By something: round 128's effect #3 named its effect with `Data: {}`, a magnitude of 0 (since round 128).
+                raisesCarryWeight: own.some(({ text, magnitude }) => CARRY.test(text) && !DETRIMENTAL.test(text) && magnitude > 0),
                 alteration: own.some(({ text }) => /^MagicSkill:[ \t]*Alteration[ \t]*\r?$/m.test(text)),
                 // For a while: the carry weight given back when the effect ends, or raised for good.
                 givesItBack: own.some(({ text }) => CARRY.test(text) && RECOVER.test(text)),

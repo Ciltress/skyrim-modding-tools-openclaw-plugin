@@ -48,7 +48,8 @@ const MAX_RUNS = 200;
  * file with its moveRecord call there.
  *
  * A write over a record file a build numbered keeps the FormKey line the build gave it, where the content leaves it out
- * (keptFormKey).
+ * (keptFormKey). A script's source written in the projects folder outside its project's scripts folder goes there
+ * (placeScript).
  */
 export class WriteGuard {
     private readonly projects = new Map<string, string>();
@@ -135,7 +136,9 @@ export class WriteGuard {
         const given = value.trim();
         const file = path.resolve(this.projectsDir, given);
         const relative = path.relative(this.projectsDir, file);
-        if (!/\.ya?ml$/i.test(file) || !relative || relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
+        if (/\.psc$/i.test(file)) return this.placeScript(tool, given, file, relative, runProject);
+        if (!/\.ya?ml$/i.test(file)) return undefined;
         const parts = relative.split(/[\\/]/);
         const inProject = parts.length > 1 && this.isProject(parts[0]);
         if (inProject && parts.length > 2 && parts[1].toLowerCase() === 'plugin') return undefined;
@@ -165,6 +168,29 @@ export class WriteGuard {
                     `"from": ${JSON.stringify(slashed(file))}, "to": ${JSON.stringify(tail.join('/'))}} — then edit ${slashed(target)}.`
                 : `Not edited: ${said} The project has no file at ${slashed(target)}.`
         };
+    }
+
+    /**
+     * A Papyrus source in the projects folder outside its project's scripts folder, where the build compiles none: into that
+     * folder, by its name. Written by a relative path, `scripts/StarterGoldScript.psc` landed in the projects folder, and
+     * its quest built with the script warned missing (eval round 127's quest+detailed #4).
+     */
+    private placeScript(tool: string, given: string, file: string, relative: string, runProject: string | undefined): Placement {
+        const parts = relative.split(/[\\/]/);
+        const inProject = parts.length > 1 && this.isProject(parts[0]);
+        if (inProject && parts.length === 3 && parts[1].toLowerCase() === 'scripts') return undefined;
+        const project = inProject ? parts[0] : runProject;
+        const name = parts[parts.length - 1];
+        const slashed = (target: string) => target.split(path.sep).join('/');
+        const said = `${given} is ${slashed(file)}: outside every project's scripts folder, where the build compiles no script — ` +
+            'a relative path starts at the projects folder.';
+        if (!project) {
+            return { reason: `Not ${tool === 'write' ? 'written' : 'edited'}: ${said} A script's source goes into its project's scripts ` +
+                `folder, beside the plugin folder: ${slashed(path.join(this.projectsDir, '<project>', 'scripts', name))}.` };
+        }
+        const target = path.join(this.projectsDir, project, 'scripts', name);
+        if (tool === 'write' || fs.existsSync(target)) return { target };
+        return { reason: `Not edited: ${said} The project has no script at ${slashed(target)}: write it there.` };
     }
 
     private isProject(folder: string): boolean {

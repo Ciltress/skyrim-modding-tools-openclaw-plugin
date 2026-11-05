@@ -66,6 +66,39 @@ describe('WriteGuard', () => {
         expect(g.beforeToolCall(call('read', { path: 'Books/MavenWarning.yaml' }), agent)).toBeUndefined();
     });
 
+    it('writes a script\'s source outside its project\'s scripts folder into it, and lets one there through', () => {
+        // Eval round 127's quest+detailed #4: `scripts/StarterGoldScript.psc` landed in the projects folder, and its quest
+        // built with the script warned missing.
+        project('StarterGold');
+        const g = guard();
+        g.afterToolCall(call('newProject', { project: 'StarterGold' }), agent);
+        const target = path.join(projects, 'StarterGold', 'scripts', 'StarterGoldScript.psc');
+        for (const given of ['scripts/StarterGoldScript.psc', 'StarterGoldScript.psc', 'StarterGold/plugin/scripts/StarterGoldScript.psc',
+            'StarterGold/Scripts/Source/StarterGoldScript.psc']) {
+            expect(g.beforeToolCall(call('write', { path: given, content: 'ScriptName StarterGoldScript extends Quest\n' }), agent))
+                .toEqual({ params: { path: target } });
+        }
+        for (const given of ['StarterGold/scripts/StarterGoldScript.psc', target, path.join(os.tmpdir(), 'Elsewhere.psc')]) {
+            expect(g.beforeToolCall(call('write', { path: given }), agent)).toBeUndefined();
+        }
+        // An edit goes to the project's script where it has one, and is stopped where it has none.
+        expect(g.beforeToolCall(call('edit', { path: 'scripts/StarterGoldScript.psc' }), agent)).toEqual({
+            block: true,
+            blockReason: expect.stringContaining(`The project has no script at ${slashed('StarterGold', 'scripts', 'StarterGoldScript.psc')}`)
+        });
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, 'ScriptName StarterGoldScript extends Quest\n');
+        expect(g.beforeToolCall(call('edit', { path: 'scripts/StarterGoldScript.psc' }), agent)).toEqual({ params: { path: target } });
+    });
+
+    it('stops a script\'s source written outside every project by a run that named none, naming where it goes', () => {
+        const result = guard().beforeToolCall(call('write', { path: 'scripts/StarterGoldScript.psc' }), agent);
+        expect(result).toEqual({
+            block: true,
+            blockReason: expect.stringContaining(`its project's scripts folder, beside the plugin folder: ${slashed('<project>', 'scripts', 'StarterGoldScript.psc')}`)
+        });
+    });
+
     it('acts only for the agents that mod', () => {
         const g = guard();
         expect(g.beforeToolCall(call('write', { path: 'Books/MavenWarning.yaml' }), { agentId: 'swift', runId: 'run-1' })).toBeUndefined();

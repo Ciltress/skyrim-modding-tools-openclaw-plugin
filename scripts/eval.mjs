@@ -1270,8 +1270,7 @@ const TASKS = [
     // Placed in the world (since round 125, the user's pick): a chest in a game cell, holding things.
     {
         id: 'world',
-        // No skill places things in the world yet: the basics, until one does.
-        skill: 'skyrim-modding-basics',
+        skill: 'skyrim-modding-world',
         prompt: 'Make a new mod called BreezehomeChest that puts a chest in Breezehome holding 500 gold and a Steel Sword. ' +
             'Build it, but do not deploy it.',
         detailed: 'Make a new mod called BreezehomeChest that puts a new chest of its own, named "Hunter\'s Chest", in ' +
@@ -1300,8 +1299,7 @@ const TASKS = [
     // A perk (since round 125, the user's pick): an entry point that changes a value, under conditions.
     {
         id: 'perk',
-        // No skill writes perks yet: the basics, until one does.
-        skill: 'skyrim-modding-basics',
+        skill: 'skyrim-modding-perks',
         prompt: 'Make a new mod called SteadyAim with a new perk named "Steady Aim" that makes the player\'s bows deal 20% ' +
             'more damage. Build it, but do not deploy it.',
         detailed: 'Make a new mod called SteadyAim with a new perk named "Steady Aim". Make it like the first rank of ' +

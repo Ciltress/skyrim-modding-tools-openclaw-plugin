@@ -320,7 +320,13 @@ const truth = {
     breezehome: await (async () => {
         const found = await callServerJson('findRecords', { text: 'Breezehome', types: ['CELL'], limit: 5 });
         const cell = found.records.find(r => r.name?.toLowerCase() === 'breezehome') ?? found.records[0];
-        return cell ? { formId: cell.formId, editorId: cell.editorId } : fail('the instance has no Breezehome cell');
+        if (!cell) fail('the instance has no Breezehome cell');
+        // Where the house is: what the game places in it — its containers and furniture, as readRecord lists them — spans these.
+        const points = ((await callServerJson('readRecord', { record: cell.formId })).placed?.references ?? [])
+            .map(r => r.position.split(',').map(Number)).filter(p => p.length === 3 && p.every(Number.isFinite));
+        if (points.length < 5) fail('could not read what Breezehome places');
+        const span = i => [Math.min(...points.map(p => p[i])), Math.max(...points.map(p => p[i]))];
+        return { formId: cell.formId, editorId: cell.editorId, x: span(0), y: span(1), lowest: span(2)[0] };
     })(),
     // The damage the arrow task's simple prompt asks to beat.
     steelArrow: await (async () => {
@@ -790,8 +796,9 @@ async function breezehomeChests() {
     const inCell = records.filter(r => (r.group === 'cells' || r.group === 'worldspaces')
         && (r.text.includes(cell.formId) || r.file.toLowerCase().includes(cell.editorId.toLowerCase())
             || r.file.includes(cell.formId.replace(':', '_'))));
-    const placed = inCell.flatMap(r => [...r.text.matchAll(/^[ \t]*(?:-[ \t]*)?Base:[ \t]*([^\s#]+)/gm)].map(m => m[1]));
-    return Promise.all(placed.map(async base => {
+    const placed = inCell.flatMap(r => [...r.text.matchAll(/^[ \t]*(?:-[ \t]*)?Base:[ \t]*([^\s#]+)/gm)]
+        .map(m => ({ base: m[1], position: positionOf(r.text) })));
+    return Promise.all(placed.map(async ({ base, position }) => {
         const text = await recordAnywhere(project, base);
         // A container: the project's own in its Containers folder, or a CONT of the load order.
         const formKey = (await linkTarget(project, base))?.toLowerCase();
@@ -804,9 +811,28 @@ async function breezehomeChests() {
         }
         const container = isContainer ? text : '';
         const items = await Promise.all(containerItems(container).map(async ({ link, count }) => ({ id: (await editorIdOf(project, link))?.toLowerCase(), count })));
-        return { base, own: await ownRecord(project, base), text: container, items };
+        return { base, own: await ownRecord(project, base), text: container, items, position };
     })).then(all => all.filter(chest => chest.text));
 }
+
+/**
+ * A placed reference's Position, `x, y, z` — quoted as editRecord writes it, or not; 0, 0, 0 — where the game puts one with
+ * none — where it has none.
+ */
+function positionOf(text) {
+    const at = /^[ \t]+Position:[ \t]*['"]?(-?[\d.]+)[ \t]*,[ \t]*(-?[\d.]+)[ \t]*,[ \t]*(-?[\d.]+)/m.exec(text);
+    return at ? at.slice(1, 4).map(Number) : [0, 0, 0];
+}
+
+/**
+ * Whether a position is in Breezehome where the player finds what is there: no more than 32 units below the lowest thing the
+ * game places in it, and no more than 96 beyond them across the floor. Since round 128: world #4 passed with its chest at
+ * 0, 0, 0, 64 units below the ground floor and 110 east of the easternmost container — under the floor in game.
+ */
+const inTheHouse = ([x, y, z]) => {
+    const { x: [minX, maxX], y: [minY, maxY], lowest } = truth.breezehome;
+    return z >= lowest - 32 && x >= minX - 96 && x <= maxX + 96 && y >= minY - 96 && y <= maxY + 96;
+};
 
 /** How many of an item a container holds, by the item's editor ID. */
 const holds = (chest, editorId) => chest.items.filter(i => i.id === editorId.toLowerCase()).reduce((n, i) => n + (i.count || 0), 0);
@@ -1303,6 +1329,8 @@ const TASKS = [
             const filled = chests.filter(chest => holds(chest, 'Gold001') === 500 && holds(chest, truth.steelSword.editorId) === 1);
             return {
                 chestInBreezehome: chests.length > 0,
+                // Where the player finds it: in the house, on a floor (since round 128).
+                inTheHouse: chests.some(chest => inTheHouse(chest.position)),
                 holdsGoldAndSword: filled.length > 0,
                 built: builtProject('BreezehomeChest', calls)
             };

@@ -844,10 +844,10 @@ function scriptProperties(text) {
 }
 
 /**
- * The code the game runs of a quest's script: the events it sends a quest (OnInit, OnReset, OnStory…; OnUpdate… once
- * registered), its stage fragments where the quest names fragments, and the functions these call. Papyrus compiles an
- * event of any name, and one the game never sends never runs: eval round 125's quest+detailed #2 gave its gold in
- * OnQuestInit. A script attached to a quest runs only if it extends Quest.
+ * The code the game runs of a quest's script: the events it sends a quest (OnInit, OnStory…; OnUpdate… once registered —
+ * Quest.psc and Form.psc declare no other), its stage fragments where the quest names fragments, and the functions these
+ * call. Papyrus compiles an event of any name, and one the game never sends never runs: eval round 125's quest+detailed #2
+ * gave its gold in OnQuestInit. A script attached to a quest runs only if it extends Quest.
  */
 function questCode(source, questText) {
     if (!/^[ \t]*ScriptName[ \t]+\w+[ \t]+extends[ \t]+Quest\b/im.test(source)) return '';
@@ -856,7 +856,7 @@ function questCode(source, questText) {
     const registered = /RegisterFor(?:Single)?Update(?:GameTime)?\s*\(/i.test(source);
     const fragments = /Fragment/i.test(blockOf(questText, 'VirtualMachineAdapter'));
     const reached = new Set(blocks.filter(b => b.kind === 'event'
-        ? /^(oninit|onreset|onstory\w+)$/.test(b.name) || (registered && /^onupdate(gametime)?$/.test(b.name))
+        ? /^(oninit|onstory\w+)$/.test(b.name) || (registered && /^onupdate(gametime)?$/.test(b.name))
         : fragments && /^fragment_\d+$/.test(b.name)));
     for (let grew = true; grew;) {
         grew = false;
@@ -1337,7 +1337,7 @@ const TASKS = [
     // A quest with a Papyrus script (since round 125, the user's pick): started with the game, its script compiled by the build.
     {
         id: 'quest',
-        skill: 'skyrim-modding-basics',
+        skill: 'skyrim-modding-quests-and-scripts',
         prompt: 'Make a new mod called StarterGold that gives the player 500 gold when a new game starts. Build it, but do ' +
             'not deploy it.',
         detailed: 'Make a new mod called StarterGold with a quest of its own named "Starter Gold" that starts with the ' +

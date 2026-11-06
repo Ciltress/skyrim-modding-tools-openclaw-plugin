@@ -1,7 +1,8 @@
+import os from 'node:os';
 import path from 'node:path';
 import type { WizardPrompter, WizardSelectParams } from 'openclaw/plugin-sdk/setup';
 import {
-    checkMo2Instance, chooseModManager, discoverSkills, MUDDY, MUDDY_WORKSPACE_FILES, mo2InstancesDir, skyrimInstances
+    checkMo2Instance, chooseModManager, discoverSkills, findBlender, MUDDY, MUDDY_WORKSPACE_FILES, mo2InstancesDir, skyrimInstances
 } from 'skyrim-modding-tools-core';
 import { PLUGIN_ID } from './settings.js';
 
@@ -68,11 +69,19 @@ const CONTEXT_SIZES = [32768, 65536, 131072, 262144];
 
 /**
  * Muddy's tools: the plugin's, the file tools for his project files, the web for what the tools do not cover, his
- * memory, and skill_workshop when he may learn skills from his work.
+ * memory, and skill_workshop when he may learn skills from his work — and each Blender MCP server's tools OpenClaw has,
+ * `<server>__*`, to arrange a cell exportCell put into Blender.
  */
-export function muddyTools(learn: boolean): string[] {
+export function muddyTools(learn: boolean, blenderServers: string[] = []): string[] {
     return ['read', 'write', 'edit', 'apply_patch', 'ls', 'skills_read', PLUGIN_ID, 'web_search', 'web_fetch',
-        'memory_get', 'memory_search', ...(learn ? ['skill_workshop'] : [])];
+        'memory_get', 'memory_search', ...(learn ? ['skill_workshop'] : []), ...blenderServers.map(server => `${server}__*`)];
+}
+
+/** OpenClaw's MCP servers that are Blender's: by their name or their command. */
+export function blenderServers(config: Config): string[] {
+    return Object.entries((config.mcp?.servers ?? {}) as Record<string, Config>)
+        .filter(([name, server]) => /blender/i.test(name) || /blender/i.test(String(server?.command ?? '')))
+        .map(([name]) => name);
 }
 
 const kTokens = (tokens: number) => `${Math.round(tokens / 1024)}k`;
@@ -328,8 +337,14 @@ export function applySetup(draft: Config, choices: SetupChoices, context: Pick<S
         model: { ...before.model, primary: muddy.model, fallbacks: before.model?.fallbacks ?? [] },
         thinkingDefault: muddy.thinking,
         skills: union(before.skills ?? [], discoverSkills().map(skill => skill.name)),
-        tools: { ...before.tools, allow: union(allowed, muddyTools(muddy.learn)) }
+        tools: { ...before.tools, allow: union(allowed, muddyTools(muddy.learn, blenderServers(draft))) }
     };
+    // Blender's MCP server starts Blender for its background tools from BLENDER_PATH, which it is not given by itself.
+    for (const name of blenderServers(draft)) {
+        const server = draft.mcp.servers[name] as Config;
+        const blender = server.env?.BLENDER_PATH ? undefined : findBlender(process.platform === 'win32', process.env.PATH, os.homedir());
+        if (blender) server.env = { ...server.env, BLENDER_PATH: blender };
+    }
     // A model list of his own that leaves the new model out would refuse it.
     if (Array.isArray(before.modelPolicy?.allow) && !before.modelPolicy.allow.includes(muddy.model)) {
         entry.modelPolicy = { ...before.modelPolicy, allow: [...before.modelPolicy.allow, muddy.model] };

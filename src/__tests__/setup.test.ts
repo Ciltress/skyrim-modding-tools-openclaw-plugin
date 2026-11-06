@@ -242,6 +242,16 @@ describe('taking every default (--yes)', () => {
         expect(draft.agents.entries[MUDDY.id].model.primary).toBe('ollama/small:4b');
     });
 
+    it('gives Muddy the tools of Blender\'s MCP server where OpenClaw has one, and the server the Blender it starts', async () => {
+        const { context } = setup();
+        context.config = { ...context.config, mcp: { servers: { blender: { command: 'C:/Users/me/.local/bin/blender-mcp.exe', env: { BLENDER_PATH: 'D:/Blender/blender.exe' } }, docs: { command: 'docs-mcp' } } } };
+        const { draft } = await run(context, defaultsPrompter(() => { }), { yes: true });
+        expect(draft.agents.entries[MUDDY.id].tools.allow).toContain('blender__*');
+        expect(draft.agents.entries[MUDDY.id].tools.allow).not.toContain('docs__*');
+        // A Blender already named is kept.
+        expect(draft.mcp.servers.blender.env.BLENDER_PATH).toBe('D:/Blender/blender.exe');
+    });
+
     it('takes the instance, the model and the rest from the command line', async () => {
         const { instancesDir, context } = setup();
         const test = instance(instancesDir, 'Skyrim Test');

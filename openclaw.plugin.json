@@ -36,6 +36,10 @@
         "type": "string",
         "description": "Where readCrashLog reads Crash Logger SSE's crash-*.log files. Unset: the SKSE folder in the game's My Games folder, where Crash Logger writes them."
       },
+      "blender": {
+        "type": "string",
+        "description": "The Blender exportCell runs in the background to save a cell's .blend, with the PyNifly add-on. Unset: blender on PATH, else where Blender's installer or Steam puts it."
+      },
       "projectsDir": {
         "type": "string",
         "description": "Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw's state folder (~/.openclaw), which an update of the plugin leaves alone. Make it the modding agents' working folder too."
@@ -108,6 +112,11 @@
       "help": "Where readCrashLog reads Crash Logger SSE's crash-*.log files. Unset: the SKSE folder in the game's My Games folder, where Crash Logger writes them.",
       "advanced": true
     },
+    "blender": {
+      "label": "Blender",
+      "help": "The Blender exportCell runs in the background to save a cell's .blend, with the PyNifly add-on. Unset: blender on PATH, else where Blender's installer or Steam puts it.",
+      "advanced": true
+    },
     "projectsDir": {
       "label": "Projects folder",
       "help": "Where the mod projects live. Unset: skyrim-modding-tools/projects in OpenClaw's state folder (~/.openclaw), which an update of the plugin leaves alone. Make it the modding agents' working folder too."
@@ -173,7 +182,8 @@
       "properties": [
         "projectsDir",
         "creationKitDir",
-        "papyrusCompiler"
+        "papyrusCompiler",
+        "blender"
       ]
     },
     {
@@ -238,6 +248,8 @@
       "buildProject",
       "deployProject",
       "pullProject",
+      "exportCell",
+      "importCell",
       "searchNexus",
       "readNexusMod",
       "downloadNexusFile",
@@ -286,6 +298,12 @@
       "optional": true
     },
     "pullProject": {
+      "optional": true
+    },
+    "exportCell": {
+      "optional": true
+    },
+    "importCell": {
       "optional": true
     },
     "searchNexus": {

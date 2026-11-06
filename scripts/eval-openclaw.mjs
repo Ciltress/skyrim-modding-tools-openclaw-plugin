@@ -30,6 +30,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { findBlender } from 'skyrim-modding-tools-core';
 
 /** The plugin's id, as its manifest and `plugins.entries.<id>` name it. */
 export const PLUGIN_ID = 'skyrim-modding-tools';
@@ -46,6 +47,11 @@ const DENIED_TOOLS = ['exec', 'process', 'nodes', 'dir_fetch', 'dir_list', 'file
 
 /** The files of an agent's workspace OpenClaw puts into its prompt. */
 const WORKSPACE_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'IDENTITY.md', 'TOOLS.md'];
+
+/** Blender's executable for Blender's MCP server's background tools: BLENDER_PATH, else the core's search (exportCell's). */
+function findBlenderExe() {
+    return process.env.BLENDER_PATH || findBlender(process.platform === 'win32', process.env.PATH, os.homedir());
+}
 
 /** The configuration a user's OpenClaw reads: --openclaw-config, else OPENCLAW_CONFIG_PATH, else the default. */
 export function openClawConfigFile(explicit) {
@@ -269,7 +275,7 @@ function holdsPlugin(folder) {
  * plugin's config — the settings the eval's own reads of the instance use too.
  */
 export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, agent, profile,
-    allPlugins = false }) {
+    allPlugins = false, blender = false }) {
     let config;
     try {
         config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -366,7 +372,18 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     const load = ((config.plugins.load ??= {}).paths ??= []);
     config.plugins.load.paths = [...load.filter(folder => path.resolve(folder) !== path.resolve(root) && !holdsPlugin(folder)), root];
     plugin.config = { ...plugin.config, projectsDir, ...(crashLogDir ? { crashLogDir } : {}), ...(agentId ? { agents: [agentId] } : {}), ...(profile ? { profile } : {}) };
-    if (config.mcp?.servers) config.mcp.servers = {};
+    // MCP servers are the user's, and no run's — but Blender's, for the Blender task (--blender): its tools, `<server>__*`, are
+    // the measured agent's then, and its background runs start the Blender BLENDER_PATH names, or one found.
+    const blenderServers = blender ? Object.entries(config.mcp?.servers ?? {})
+        .filter(([name, server]) => /blender/i.test(name) || /blender/i.test(String(server?.command ?? ''))) : [];
+    if (blender && blenderServers.length === 0) throw new Error('--blender needs Blender\'s MCP server in OpenClaw\'s configuration (mcp.servers).');
+    if (config.mcp?.servers) config.mcp.servers = Object.fromEntries(blenderServers.map(([name, server]) => {
+        const env = server.env?.BLENDER_PATH ? server.env : { ...server.env, ...(findBlenderExe() ? { BLENDER_PATH: findBlenderExe() } : {}) };
+        return [name, { ...server, env }];
+    }));
+    for (const kept of Object.values(agents.entries ?? {})) {
+        if (Array.isArray(kept.tools?.allow)) kept.tools.allow = [...new Set([...kept.tools.allow, ...blenderServers.map(([name]) => `${name}__*`)])];
+    }
     // The plugins a run loads: this one and its model's provider's — not the user's others, search, ComfyUI, voice. Each run
     // started all of them: OpenClaw's start was 119 of round 128's 231 minutes, the model's turns 75. --all-plugins keeps them.
     const plugins = allPlugins ? undefined

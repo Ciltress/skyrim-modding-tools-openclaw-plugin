@@ -10,7 +10,7 @@
  *                         [--authoring-runs 5] [--tasks find,read] [--max-turns 25] [--think true|false|<level>]
  *                         [--detailed] [--out <file>] [--ollama http://localhost:11434] [--settle 60]
  *                         [--provider ollama|<provider>] [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
- *                         [--all-plugins]
+ *                         [--all-plugins] [--blender]
  *
  * The agent is --openclaw-agent, else the plugin's only modding agent, else the configuration's only agent.
  * A run loads this plugin and its provider's alone (`plugins.allow`): with all of the configuration's, OpenClaw's start
@@ -50,6 +50,11 @@
  * (+detailed: its own, Hunter's Chest, that never respawns, with 10 Steel Arrows too); a perk by which bows deal 20%
  * more damage (+detailed: 30%, while sneaking, Archery 30 required); and a quest started with the game whose compiled
  * script gives the player 500 gold (+detailed: named Starter Gold, run once, a Steel Sword too, the quest stopped).
+ * Since round 133: a chest holding 100 gold placed outdoors in Riverwood beside the grindstone at Alvor's smithy, in the
+ * exterior cell its position lies in, on the ground there (+detailed: its own, Smith's Chest, that never respawns, with 5 Iron
+ * Ingots too); and, with --blender alone, Whiterun Stables' strongbox moved 100 units east in Blender and a copy placed 64
+ * north of it, through Blender's MCP server and brought back with importCell (+detailed: both turned a quarter turn). A run
+ * with --blender keeps OpenClaw's Blender MCP server, its tools the measured agent's, and gives it the Blender to start.
  *
  * --check <folder> runs no model: the checks alone, on projects folders made by hand, one per folder named
  * `<task>[+detailed]--<what it is>` — a correct mod, which passes every check, or one broken on purpose, which fails the
@@ -104,6 +109,7 @@ const { values: opt } = parseArgs({
         'openclaw-config': { type: 'string' },
         'openclaw-agent': { type: 'string' },
         'all-plugins': { type: 'boolean', default: false },
+        blender: { type: 'boolean', default: false },
         check: { type: 'string' }
     }
 });
@@ -226,7 +232,8 @@ const openClaw = await (async () => {
     try {
         session = writeSessionConfig({
             dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir, crashLogDir,
-            agent: opt['openclaw-agent'], profile: opt.profile, allPlugins: opt['all-plugins']
+            agent: opt['openclaw-agent'], profile: opt.profile, allPlugins: opt['all-plugins'],
+            blender: opt.blender || (opt.tasks ?? '').split(',').some(id => id.trim() === 'blender')
         });
     } catch (error) {
         fail(error.message);
@@ -338,6 +345,25 @@ const truth = {
         const read = await callServerJson('readRecord', { record: 'SteelArrow' });
         const damage = ammoDamage(read.versions[0].files.map(f => f.text).join('\n'));
         return Number.isFinite(damage) ? { damage } : fail('could not read the Steel Arrow\'s damage');
+    })(),
+    // The outdoor task's place: the grindstone outside Alvor's smithy in Riverwood, as the load order places it.
+    grindstone: await (async () => {
+        const found = await callServerJson('findRecords', { text: 'Riverwood', types: ['CELL'], limit: 30 });
+        for (const cell of found.records) {
+            let read;
+            try { read = await callServerJson('readRecord', { record: cell.formId }); } catch { continue; }
+            const hit = (read.placed?.references ?? []).find(r => /^CraftingBlacksmithSharpeningWheel\b/.test(r.base));
+            if (hit) return { cell: cell.editorId, position: hit.position.split(',').map(Number) };
+        }
+        return fail('could not find the grindstone outside Riverwood\'s smithy');
+    })(),
+    // The Blender task's object: the Thieves Guild strongbox in Whiterun Stables.
+    strongbox: await (async () => {
+        const read = await callServerJson('readRecord', { record: 'WhiterunStables' });
+        const hit = (read.placed?.references ?? []).find(r => /^TGRStrongbox\b/.test(r.base));
+        const base = (await callServerJson('findRecords', { records: ['TGRStrongbox'], limit: 1 })).records[0];
+        if (!hit || !base) return fail('could not find the strongbox in Whiterun Stables');
+        return { formId: hit.formId, base: base.formId, position: hit.position.split(',').map(Number), rotation: hit.rotation.split(',').map(Number) };
     })()
 };
 
@@ -841,6 +867,71 @@ const inTheHouse = ([x, y, z]) => {
 
 /** How many of an item a container holds, by the item's editor ID. */
 const holds = (chest, editorId) => chest.items.filter(i => i.id === editorId.toLowerCase()).reduce((n, i) => n + (i.count || 0), 0);
+
+/**
+ * The outdoor task's records: the project's references placed in an exterior cell — a file in a cell's Temporary or
+ * Persistent folder under Worldspaces/ — each with the container it places, its items, its position, and the grid of
+ * the cell whose folder it is in.
+ */
+async function outdoorChests(project) {
+    const { records } = projectRecords(project);
+    const placed = records.filter(r => r.group === 'worldspaces' && /\/(Temporary|Persistent)\/[^/]+$/.test(r.file)
+        && /^MutagenObjectType:[ \t]*PlacedObject/m.test(r.text));
+    return Promise.all(placed.map(async r => {
+        const base = /^Base:[ \t]*([^\s#]+)/m.exec(r.text)?.[1];
+        if (!base) return undefined;
+        const formKey = (await linkTarget(project, base))?.toLowerCase();
+        const ownFile = records.find(o => o.formKey?.toLowerCase() === formKey);
+        let isContainer = ownFile ? ownFile.group === 'containers' : false;
+        if (!ownFile && formKey) {
+            try {
+                isContainer = (await callServerJson('findRecords', { records: [formKey], limit: 1 })).records[0]?.signature === 'CONT';
+            } catch { /* a base the load order has not */ }
+        }
+        if (!isContainer) return undefined;
+        const text = await recordAnywhere(project, base);
+        const items = await Promise.all(containerItems(text).map(async ({ link, count }) => ({ id: (await editorIdOf(project, link))?.toLowerCase(), count })));
+        const cellFile = path.join(projectsDir, project, 'plugin', ...r.file.split('/').slice(0, -2), 'RecordData.yaml');
+        const grid = fs.existsSync(cellFile)
+            ? /^[ \t]+Point:[ \t]*(-?\d+)[ \t]*,[ \t]*(-?\d+)/m.exec(fs.readFileSync(cellFile, 'utf8'))?.slice(1, 3).map(Number) : undefined;
+        return { base, own: await ownRecord(project, base), text, items, position: positionOf(r.text), grid };
+    })).then(all => all.filter(Boolean));
+}
+
+/** Within `reach` units of a point across the ground, x and y. */
+const within = (a, b, reach) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= reach;
+
+/** A position in the square of the exterior cell whose folder holds it: x and y over 4096, rounded down, its grid. */
+const inItsGrid = chest => !!chest.grid && Math.floor(chest.position[0] / 4096) === chest.grid[0] && Math.floor(chest.position[1] / 4096) === chest.grid[1];
+
+/** A call of Blender's MCP server — any of its tools, by the name OpenClaw gives it (`blender__execute_blender_code_for_cli`). */
+const blenderCalls = calls => calls.filter(c => /^blender__|execute_blender_code/.test(c.name ?? ''));
+
+/** The Blender task's references: the project's copy of the strongbox, and the new ones placing a strongbox. */
+function stablesStrongboxes(project) {
+    const { plugin, records } = projectRecords(project);
+    const placed = records.filter(r => r.group === 'cells' && /^MutagenObjectType:[ \t]*PlacedObject/m.test(r.text));
+    const [id, master] = truth.strongbox.formId.split(':');
+    const isTheBox = r => r.formKey?.toLowerCase() === truth.strongbox.formId.toLowerCase()
+        || r.file.toLowerCase().endsWith(`${id}_${master}.yaml`.toLowerCase());
+    const placesBox = r => new RegExp(`^Base:[ \\t]*(?:${truth.strongbox.base.replace('.', '\\.')}|TGRStrongbox)\\b`, 'mi').test(r.text);
+    return {
+        copy: placed.find(isTheBox),
+        added: placed.filter(r => !isTheBox(r) && placesBox(r) && (!r.formKey || r.formKey.toLowerCase().endsWith(`:${plugin?.toLowerCase()}`)))
+    };
+}
+
+/** A placed reference's Rotation, x, y, z in radians — 0, 0, 0 where it has none. */
+function rotationOf(text) {
+    const at = /^[ \t]+Rotation:[ \t]*['"]?(-?[\d.]+)[ \t]*,[ \t]*(-?[\d.]+)[ \t]*,[ \t]*(-?[\d.]+)/m.exec(text);
+    return at ? at.slice(1, 4).map(Number) : [0, 0, 0];
+}
+
+/** Two angles a quarter turn apart, either way, whatever their turns. */
+const quarterTurnApart = (a, b) => {
+    const d = ((b - a) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    return Math.abs(d - Math.PI / 2) < 0.03 || Math.abs(d - 3 * Math.PI / 2) < 0.03;
+};
 
 /** The perk task's record: the project's new perk named Steady Aim. */
 const steadyAim = () => newRecords('SteadyAim', 'perks').find(r => /^steady aim$/i.test(nameOf(r.text)));
@@ -1351,6 +1442,75 @@ const TASKS = [
             };
         }
     },
+    // Placed outdoors (since round 133): a chest in an exterior cell of Tamriel, beside a thing the game places there.
+    {
+        id: 'outdoor',
+        skill: 'skyrim-modding-world',
+        prompt: 'Make a new mod called RiverwoodSmithChest that puts a chest holding 100 gold outdoors in Riverwood, next to ' +
+            'the grindstone at Alvor\'s smithy. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called RiverwoodSmithChest that puts a new chest of its own, named "Smith\'s Chest", outdoors ' +
+            'in Riverwood, standing on the ground right beside the grindstone at Alvor\'s smithy. It never respawns, and holds ' +
+            '100 gold and 5 Iron Ingots. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const chests = await outdoorChests('RiverwoodSmithChest');
+            const at = truth.grindstone.position;
+            const beside = chests.filter(chest => within(chest.position, at, 400));
+            return {
+                chestOutdoors: chests.length > 0,
+                besideTheGrindstone: beside.length > 0,
+                // In the exterior cell its position lies in: the game loads it with the ground it stands on.
+                inItsCell: beside.some(inItsGrid),
+                // On the ground there, not sunk into it or floating: the ground rises and falls outdoors.
+                onTheGround: beside.some(chest => Math.abs(chest.position[2] - at[2]) <= 120),
+                holds100Gold: chests.some(chest => holds(chest, 'Gold001') === 100),
+                built: builtProject('RiverwoodSmithChest', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const chests = (await outdoorChests('RiverwoodSmithChest')).filter(chest => chest.own && /^smith'?s chest$/i.test(nameOf(chest.text)));
+            return {
+                ...await TASKS.find(t => t.id === 'outdoor').check({ calls }),
+                ownChestNamed: chests.length > 0,
+                fiveIronIngots: chests.some(chest => holds(chest, 'IngotIron') === 5),
+                neverRespawns: chests.length > 0 && chests.every(chest => !/^[ \t]*-[ \t]*Respawns[ \t]*\r?$|Flags:[ \t]*\[[^\]\r\n]*\bRespawns\b/m.test(chest.text))
+            };
+        }
+    },
+    // A cell arranged in Blender (since round 133, with --blender): through Blender's MCP server, brought back with importCell.
+    {
+        id: 'blender',
+        skill: 'skyrim-modding-world',
+        blender: true,
+        prompt: 'Make a new mod called StablesStrongbox: open Whiterun Stables in Blender, move its strongbox 100 units east ' +
+            '(+x), and put a copy of the strongbox 64 units north (+y) of where the moved one stands. Bring the changes back ' +
+            'into the mod. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called StablesStrongbox. Use Blender: export the Whiterun Stables cell to it, and there move ' +
+            'the Thieves Guild strongbox (TGRStrongbox) 100 units along +x and turn it a quarter turn about its vertical axis; ' +
+            'then copy it, and place the copy 64 units along +y from the moved one, turned the same way. Bring the layout back ' +
+            'into the mod with the tools. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { copy, added } = stablesStrongboxes('StablesStrongbox');
+            const [x, y, z] = truth.strongbox.position;
+            const moved = copy ? positionOf(copy.text) : undefined;
+            const near = (p, q, reach) => !!p && Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) <= reach;
+            return {
+                usedBlender: blenderCalls(calls).length > 0,
+                exportedAndImported: calls.some(c => c.name === 'exportCell') && calls.some(c => c.name === 'importCell'),
+                movedEast: near(moved, [x + 100, y, z], 8),
+                copyNorthOfIt: added.some(r => near(positionOf(r.text), [x + 100, y + 64, z], 16)),
+                built: builtProject('StablesStrongbox', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const { copy, added } = stablesStrongboxes('StablesStrongbox');
+            const turned = truth.strongbox.rotation[2];
+            return {
+                ...await TASKS.find(t => t.id === 'blender').check({ calls }),
+                movedTurned: !!copy && quarterTurnApart(turned, rotationOf(copy.text)[2]),
+                copyTurned: added.some(r => quarterTurnApart(turned, rotationOf(r.text)[2]))
+            };
+        }
+    },
     // A perk (since round 125, the user's pick): an entry point that changes a value, under conditions.
     {
         id: 'perk',
@@ -1609,8 +1769,11 @@ async function unchangedCopies() {
     const copies = [];
     for (const project of fs.existsSync(projectsDir) ? fs.readdirSync(projectsDir) : []) {
         const { plugin, records } = projectRecords(project);
-        for (const { formKey, text } of records) {
+        for (const { formKey, text, file } of records) {
             if (!plugin || !formKey || formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`)) continue;
+            // A worldspace's copy is the frame its exterior cells' copies are in, unchanged by nature, as addPatch of a cell
+            // writes it (since round 133's outdoor task); an interior cell's copy is skipped below by its several files.
+            if (/^Worldspaces\/[^/]+\/RecordData\.yaml$/i.test(file)) continue;
             try {
                 const theirs = (await callServerJson('readRecord', { record: formKey })).versions
                     ?.find(v => v.plugin?.toLowerCase() !== plugin.toLowerCase());
@@ -1624,7 +1787,8 @@ async function unchangedCopies() {
     return copies;
 }
 
-const wanted = opt.tasks ? opt.tasks.split(',').map(s => s.trim()) : TASKS.map(t => t.id);
+// The Blender task runs with --blender alone, or when --tasks names it: it needs Blender's MCP server, which a run keeps only then.
+const wanted = opt.tasks ? opt.tasks.split(',').map(s => s.trim()) : TASKS.filter(t => !t.blender || opt.blender).map(t => t.id);
 const unknownTasks = wanted.filter(id => !TASKS.some(t => t.id === id));
 if (unknownTasks.length) fail(`unknown task(s) ${unknownTasks.join(', ')}; the tasks are ${TASKS.map(t => t.id).join(', ')}.`);
 const tasks = TASKS.filter(t => wanted.includes(t.id)).flatMap(t => [
@@ -1756,7 +1920,10 @@ async function checkCases(folder) {
         }
         projectsDir = path.resolve(folder, name);
         const project = fs.readdirSync(projectsDir).find(entry => fs.existsSync(path.join(projectsDir, entry, 'plugin')));
-        const calls = [{ name: 'buildProject', args: { project }, isError: false, result: '{"status":"success"}' }];
+        // A case's own calls where it has them (calls.json beside its project): the Blender task's checks read them.
+        const callsFile = path.join(projectsDir, 'calls.json');
+        const calls = fs.existsSync(callsFile) ? JSON.parse(fs.readFileSync(callsFile, 'utf8'))
+            : [{ name: 'buildProject', args: { project }, isError: false, result: '{"status":"success"}' }];
         const result = await resultOf(task, 0, { answer: '', calls, stop: 'answered', turns: [], started: Date.now(), phases: {} });
         const failed = Object.entries(result.checks).filter(([, ok]) => !ok).map(([check]) => check);
         console.log(`check ${name}: ${result.success ? 'PASS' : 'FAIL'}${failed.length ? ` — failed: ${failed.join(', ')}` : ''}` +

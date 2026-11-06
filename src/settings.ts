@@ -71,6 +71,14 @@ export const SETTINGS = {
             'folder, where Crash Logger writes them.',
         advanced: true
     },
+    blender: {
+        variable: 'SKYRIM_BLENDER',
+        schema: { type: 'string' },
+        label: 'Blender',
+        help: 'The Blender exportCell runs in the background to save a cell\'s .blend, with the PyNifly add-on. Unset: blender on ' +
+            'PATH, else where Blender\'s installer or Steam puts it.',
+        advanced: true
+    },
     projectsDir: {
         variable: 'SKYRIM_PROJECTS_DIR',
         schema: { type: 'string' },
@@ -171,7 +179,7 @@ export const UI_HINTS: Record<Field | 'agents', UiHint> = {
 /** The Settings page's sections. */
 export const CONFIG_GROUPS = [
     { id: 'game', title: 'Mod manager', order: 10, properties: ['modManager', 'mo2Instance', 'amethystDir', 'winePrefix', 'crashLogDir'] },
-    { id: 'projects', title: 'Projects and scripts', order: 20, properties: ['projectsDir', 'creationKitDir', 'papyrusCompiler'] },
+    { id: 'projects', title: 'Projects and scripts', order: 20, properties: ['projectsDir', 'creationKitDir', 'papyrusCompiler', 'blender'] },
     { id: 'agents', title: 'Agents', order: 30, properties: ['agents'] },
     { id: 'nexus', title: 'Nexus Mods', order: 40, properties: ['nexusApiKey'] },
     { id: 'tools', title: 'Tools', order: 50, properties: ['profile', 'maxResponseBytes', 'capabilityGate', 'helperPath'] }

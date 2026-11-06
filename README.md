@@ -12,9 +12,10 @@
 # skyrim-modding-tools-openclaw-plugin
 
 **Mod Skyrim Special Edition with your OpenClaw agents** — even with a small model running on your own PC. Ask an
-agent for a flaming sword, a patch, a mod from Nexus or the reason for your last crash: this plugin gives it the
-tools to look into your whole load order, write mods as text projects, build them into plugins and deploy them into
-Mod Organizer or Amethyst, install mods, and read crash logs.
+agent for a flaming sword, a dragon shout, a chest in Breezehome or one outdoors in Riverwood, a quest that starts with
+the game, a patch, a mod from Nexus or the reason for your last crash: this plugin gives it the tools to look into your
+whole load order, write mods as text projects, build them into plugins and deploy them into Mod Organizer or Amethyst,
+install mods, read crash logs, and arrange a cell in Blender and bring it back.
 
 The tools are [skyrim-modding-tools-core](https://github.com/Ciltress/skyrim-modding-tools-core)'s; the
 [MCP server](https://github.com/Ciltress/skyrim-modding-tools-mcp) serves the same tools to any MCP client.
@@ -28,6 +29,8 @@ It does what an MCP server cannot in OpenClaw:
 - **The instructions** the MCP server announces, which OpenClaw drops, in the system prompt of the agents that mod.
 - **The skills** ship with the plugin; no `skills.load.extraDirs`.
 - **A build check:** an agent that changed a project and did not build it is asked once more before it answers.
+  OpenClaw makes that pass only in a run whose calls it could replay — its own read-only tools — so after a plugin
+  tool's call or a write it logs the request instead; the tools' own answers say to build next as well.
 - **A write guard:** an agent's write or edit of a record file that would land in the projects folder outside every
   project's plugin folder, where no build reads it, goes to the file's path in its project instead, and the answer
   names that path. Where the project or the group folder cannot be told, it is stopped, with where the file goes. A
@@ -35,10 +38,21 @@ It does what an MCP server cannot in OpenClaw:
 - **A text-call check:** an answer that wrote a tool call as text, which runs nothing, is asked to make the call — one
   in a call tag (`<tool_call>`, `<call>`, `<tool_code>`) wherever it is; one of the agent's tools written with its
   arguments (`readSkill{…}`, `openclaw_tool_call{id: "readSkill", …}`, `{"tool_name": "readSkill", …}`) where the
-  answer ends on it, asked for only if it was meant to run.
+  answer ends on it, asked for only if it was meant to run. OpenClaw makes this pass as the build check's, only in a run
+  of its replay-safe tools.
 - **An announced-step check:** in a run that made no call yet, an answer that ends saying what it is about to do
   ("First, I am reading the basics skill.", "Let me check …" — not "Let me know …") and does nothing is asked to take
   that step, if it was meant to be taken now.
+
+## How well it works
+
+`npm run eval` has an OpenClaw agent do 35 tasks on a test instance and checks what it made against the game: looking
+records up and patching them, 14 kinds of mod — a sword, an armor, a potion, a recipe, an arrow, a dragon shout, a
+magic effect, a leveled list, a chest placed in Breezehome, a perk, a quest with its script, a spell, an NPC and a
+note — each asked plainly and in detail, five times each, and two crash logs read: 155 runs a round. In its latest
+round gemma4:e4b, a small model run locally by Ollama, passed 144 of 155. It runs on an Ollama build with the gemma4
+tool-call repairs of [ollama/ollama#19274](https://github.com/ollama/ollama/pull/19274). A chest placed outdoors, and with
+`--blender` a cell arranged through Blender's MCP server, are tasks of the next rounds.
 
 ## Modding with Muddy! 🦀
 
@@ -63,7 +77,9 @@ The wizard looks like OpenClaw's own setup and asks for:
 
 He gets his own workspace, `~/.openclaw/workspace-muddy`, with his soul, his identity and his avatar. The projects
 folder is his working folder, and he has the modding skills and the tools he needs: this plugin's, the file tools, the
-web and his memory. Run the wizard again to change any of it: it updates the Muddy it finds and keeps what you added.
+web and his memory — and where OpenClaw has [Blender's MCP server](https://www.blender.org/lab/mcp-server/), its tools, to
+arrange a cell `exportCell` put into Blender himself (Blender needs the PyNifly add-on). Run the wizard again to change
+any of it: it updates the Muddy it finds and keeps what you added.
 
 For a script or an agent setting it up for you, `--yes` asks nothing:
 `openclaw skyrim setup --yes --instance "<folder>" --model ollama/<model>`, with `--context`, `--thinking`,
@@ -153,7 +169,10 @@ npm test
 npm run manifest       # after a tool changed in the core: rewrite openclaw.plugin.json
 npm run build:helper   # the core's helper, in node_modules/skyrim-modding-tools-core
 openclaw plugins reload skyrim-modding-tools --accept-capabilities
+npm run eval -- --openclaw-agent <agent> --runs 1 --authoring-runs 5 --detailed   # a round of the eval, on a test instance
 ```
+
+`--blender` adds the task that arranges a cell through Blender's MCP server, which the agent then needs in OpenClaw.
 
 See [AGENTS.md](AGENTS.md).
 

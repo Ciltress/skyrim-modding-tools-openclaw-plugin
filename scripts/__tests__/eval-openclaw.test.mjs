@@ -300,6 +300,14 @@ describe('builtAfterLastChange', () => {
         expect(builtAfterLastChange([write, build, notBuilt], projects)).toBe(false);
     });
 
+    it('takes deleteRecord sent with `build` as a build, and its refused build as a change: round 130\'s armor+detailed #5', () => {
+        const deleted = (isError, result) => ({ name: 'deleteRecord', args: { project: 'FlameBlade', record: 'MagicEffects/X.yaml', build: true }, isError, result });
+        expect(builtAfterLastChange([write, deleted(false, '{"status":"success","nextStep":"Deleted and built: …"}')], projects)).toBe(true);
+        expect(builtAfterLastChange([write, build, deleted(true, '[tool error] {\n  "error": "Deleted C:\\\\Temp\\\\X.yaml — sending this again changes nothing. The build after it: Not built: …"}')], projects)).toBe(false);
+        const unbuilt = { name: 'deleteRecord', args: { project: 'FlameBlade', record: 'MagicEffects/X.yaml' }, isError: false, result: '{"status":"success","nextStep":"Run buildProject next"}' };
+        expect(builtAfterLastChange([write, build, unbuilt], projects)).toBe(false);
+    });
+
     it('counts no change where nothing was written to a project', () => {
         const refusedEdit = edit({ set: [] }, '[tool error] {"error": "No record file \'Weapons/X.yaml\' in the project"}', true);
         const same = { ...write, result: `No changes made to ${file}` };

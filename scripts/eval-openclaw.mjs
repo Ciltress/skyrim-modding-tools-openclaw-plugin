@@ -458,10 +458,11 @@ const sentTrue = value => value === true || String(value).trim().toLowerCase() =
 
 /**
  * A recorded call that built and succeeded: buildProject, or editRecord sent with `build`, which builds after its
- * change and answers that build (core v0.1.19, from round 75).
+ * change and answers that build (core v0.1.19, from round 75) — or deleteRecord sent with it (core v0.2.55): round 130's
+ * armor+detailed #5 deleted its unused effect with the build, last, and failed on `built` alone.
  */
 export const buildSucceeded = call => !call.isError &&
-    (call.name === 'buildProject' || (call.name === 'editRecord' && sentTrue(call.args?.build)));
+    (call.name === 'buildProject' || (['editRecord', 'deleteRecord'].includes(call.name) && sentTrue(call.args?.build)));
 
 /** OpenClaw's file tools: their answer names the file they wrote, "Successfully wrote 1074 bytes to <path>". */
 const FILE_TOOLS = ['write', 'edit', 'apply_patch'];
@@ -479,7 +480,9 @@ export function changedProject(call, projectsDir) {
     if (FILE_TOOLS.includes(call.name)) {
         return !call.isError && !/^No changes/i.test(result) && result.toLowerCase().includes(path.basename(projectsDir).toLowerCase());
     }
-    if (call.isError) return call.name === 'editRecord' && /"error":\s*"Changed /.test(result);
+    // deleteRecord sent with `build` deleted the file where its build was refused: "Deleted <file> — … The build after it: …".
+    if (call.isError) return call.name === 'editRecord' && /"error":\s*"Changed /.test(result)
+        || call.name === 'deleteRecord' && /"error":\s*"Deleted /.test(result);
     return CHANGING_TOOLS.includes(call.name);
 }
 

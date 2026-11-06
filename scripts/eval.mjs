@@ -620,7 +620,7 @@ async function nordSwordRecipe() {
         makes: await editorIdOf(project, /^CreatedObject:[ \t]*([^\s#]+)/m.exec(r.text)?.[1])
     })));
     const recipe = recipes.find(r => truth.ancientNordSword.editorIds.includes(r.makes?.toLowerCase()));
-    if (!recipe) return { recipe, materials: [], conditions: [] };
+    if (!recipe) return { recipe, materials: [], conditions: [], perks: [] };
     const at = await editorIdOf(project, /^WorkbenchKeyword:[ \t]*([^\s#]+)/m.exec(recipe.text)?.[1]);
     // A recipe's materials are written as a container's items are.
     const materials = await Promise.all(containerItems(recipe.text).map(async ({ link, count }) => ({ id: await editorIdOf(project, link), count })));
@@ -1658,9 +1658,11 @@ async function runTask(task, run) {
 /** A run's record: the checks and the counts. */
 async function resultOf(task, run, { answer, calls, stop, turns, started, phases, client }) {
     const checking = Date.now();
-    // A task's facts are recorded beside its checks and count for nothing.
+    // A task's facts are recorded beside its checks and count for nothing. A check that throws fails the run and keeps it:
+    // round 130's recipe+detailed #3–#5 threw on a recipe of none, and the round lost their calls and answers.
     const { facts, ...checks } = stop === 'answered' || stop === 'maxTurns'
-        ? await task.check({ answer, calls })
+        ? await Promise.resolve().then(() => task.check({ answer, calls }))
+            .catch(error => ({ checkRan: false, facts: { checkError: String(error?.message ?? error) } }))
         : {};
     // Every task that leaves record files is held to them having no escapes a copy should have decoded.
     const escapes = leftEscapes();

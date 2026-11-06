@@ -346,16 +346,17 @@ const truth = {
         const damage = ammoDamage(read.versions[0].files.map(f => f.text).join('\n'));
         return Number.isFinite(damage) ? { damage } : fail('could not read the Steel Arrow\'s damage');
     })(),
-    // The outdoor task's place: the grindstone outside Alvor's smithy in Riverwood, as the load order places it.
+    // The outdoor task's place: the grindstone at Alvor's smithy — of the grindstones in Riverwood's cells, the one nearest
+    // its Blacksmith Forge — where the load order places it (readRecord's placedIn, core v0.2.59). Riverwood01's, 2,300 units
+    // north, is no smithy's.
     grindstone: await (async () => {
-        const found = await callServerJson('findRecords', { text: 'Riverwood', types: ['CELL'], limit: 30 });
-        for (const cell of found.records) {
-            let read;
-            try { read = await callServerJson('readRecord', { record: cell.formId }); } catch { continue; }
-            const hit = (read.placed?.references ?? []).find(r => /^CraftingBlacksmithSharpeningWheel\b/.test(r.base));
-            if (hit) return { cell: cell.editorId, position: hit.position.split(',').map(Number) };
-        }
-        return fail('could not find the grindstone outside Riverwood\'s smithy');
+        const where = async record => ((await callServerJson('readRecord', { record, in: 'Riverwood' })).placedIn?.in ?? [])
+            .map(line => /: (-?\d+), (-?\d+), (-?\d+) — /.exec(line)?.slice(1, 4).map(Number)).filter(Boolean);
+        const [forge] = await where('CraftingBlackSmithForge');
+        const stones = await where('CraftingBlacksmithSharpeningWheel');
+        if (!forge || stones.length === 0) return fail('could not find the grindstone at Riverwood\'s smithy');
+        const far = at => Math.hypot(at[0] - forge[0], at[1] - forge[1]);
+        return { position: stones.sort((a, b) => far(a) - far(b))[0] };
     })(),
     // The Blender task's object: the Thieves Guild strongbox in Whiterun Stables.
     strongbox: await (async () => {

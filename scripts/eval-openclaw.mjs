@@ -30,6 +30,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { fileURLToPath } from 'node:url';
 import { findBlender } from 'skyrim-modding-tools-core';
 
 /** The plugin's id, as its manifest and `plugins.entries.<id>` name it. */
@@ -47,6 +48,18 @@ const DENIED_TOOLS = ['exec', 'process', 'nodes', 'dir_fetch', 'dir_list', 'file
 
 /** The files of an agent's workspace OpenClaw puts into its prompt. */
 const WORKSPACE_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'IDENTITY.md', 'TOOLS.md'];
+
+/**
+ * The Python of a Blender MCP server uv installed — `blender-mcp(.exe)` in uv's bin folder starts it — or undefined: the server
+ * is then started as the configuration says.
+ */
+function blenderMcpPython(command) {
+    if (!/blender-mcp(?:\.exe)?$/i.test(command)) return undefined;
+    const tools = process.platform === 'win32'
+        ? path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'uv', 'tools', 'blender-mcp', 'Scripts', 'python.exe')
+        : path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), '.local', 'share'), 'uv', 'tools', 'blender-mcp', 'bin', 'python');
+    return fs.existsSync(tools) ? tools : undefined;
+}
 
 /** Blender's executable for Blender's MCP server's background tools: BLENDER_PATH, else the core's search (exportCell's). */
 function findBlenderExe() {
@@ -379,7 +392,12 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     if (blender && blenderServers.length === 0) throw new Error('--blender needs Blender\'s MCP server in OpenClaw\'s configuration (mcp.servers).');
     if (config.mcp?.servers) config.mcp.servers = Object.fromEntries(blenderServers.map(([name, server]) => {
         const env = server.env?.BLENDER_PATH ? server.env : { ...server.env, ...(findBlenderExe() ? { BLENDER_PATH: findBlenderExe() } : {}) };
-        return [name, { ...server, env }];
+        // Started through blender-mcp-no-stdin.py with its own Python where uv installed it: its background Blender, given the
+        // server's stdin, never finished (every call of the first Blender runs timed out after 120 s).
+        const python = blenderMcpPython(String(server.command ?? ''));
+        return [name, python
+            ? { ...server, command: python, args: [path.join(path.dirname(fileURLToPath(import.meta.url)), 'blender-mcp-no-stdin.py'), ...(server.args ?? [])], env }
+            : { ...server, env }];
     }));
     for (const kept of Object.values(agents.entries ?? {})) {
         if (Array.isArray(kept.tools?.allow)) kept.tools.allow = [...new Set([...kept.tools.allow, ...blenderServers.map(([name]) => `${name}__*`)])];

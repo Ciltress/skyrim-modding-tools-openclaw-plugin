@@ -905,8 +905,13 @@ const within = (a, b, reach) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= reach;
 /** A position in the square of the exterior cell whose folder holds it: x and y over 4096, rounded down, its grid. */
 const inItsGrid = chest => !!chest.grid && Math.floor(chest.position[0] / 4096) === chest.grid[0] && Math.floor(chest.position[1] / 4096) === chest.grid[1];
 
-/** A call of Blender's MCP server — any of its tools, by the name OpenClaw gives it (`blender__execute_blender_code_for_cli`). */
-const blenderCalls = calls => calls.filter(c => /^blender__|execute_blender_code/.test(c.name ?? ''));
+/**
+ * A call of Blender's MCP server — any of its tools, by the name OpenClaw gives it (`blender__execute_blender_code_for_cli`), or
+ * through Tool Search, `dispatch_action` with its id (`mcp:blender:blender__execute_blender_code_for_cli`), as Strata's first
+ * Blender run called them.
+ */
+const blenderCalls = calls => calls.filter(c => /^blender__|execute_blender_code/.test(c.name ?? '')
+    || c.name === 'dispatch_action' && /blender__/.test(String(c.args?.id ?? '')));
 
 /** The Blender task's references: the project's copy of the strongbox, and the new ones placing a strongbox. */
 function stablesStrongboxes(project) {

@@ -1,1 +1,25 @@
-{"0": "settings.ts", "1": "Eval Tasks and Checks", "2": "setup.ts", "3": "Eval OpenClaw Session", "4": "Package Manifest (4)", "5": "with", "6": "index.ts (6)", "7": "stage-clawhub.mjs (7)", "8": "eval-yaml.mjs (8)", "9": "ci.yml", "10": "newRecords", "11": "OpenClaw gateway", "12": "index.ts (12)", "13": "stage-clawhub.mjs (19)", "14": "skyrim-modding-tools OpenClaw plugin (21)", "15": "TypeScript Config", "16": "blockOf", "17": "Package Manifest (17)", "18": "Eval Record Readers", "19": "skyrim-modding-tools-core (installed from a GitHub tag) (19)", "20": "skyrim-modding-tools-core (installed from a GitHub tag) (20)", "21": "Eval Server Calls", "22": "Eval Model Providers", "23": "eval-yaml.mjs (23)", "24": "AGENTS.md (guidance for agents on the plugin repo)", "25": "npcTraits"}
+{
+  "0": "settings.ts",
+  "1": "Eval Tasks and Checks",
+  "2": "setup.ts",
+  "3": "Eval OpenClaw Session",
+  "4": "Package Manifest (4)",
+  "5": "with",
+  "6": "index.ts (6)",
+  "7": "stage-clawhub.mjs (7)",
+  "8": "eval-yaml.mjs (8)",
+  "9": "ci.yml",
+  "10": "newRecords",
+  "11": "OpenClaw gateway",
+  "13": "stage-clawhub.mjs (19)",
+  "14": "skyrim-modding-tools OpenClaw plugin (21)",
+  "15": "TypeScript Config",
+  "16": "blockOf",
+  "17": "Package Manifest (17)",
+  "18": "Eval Record Readers",
+  "20": "skyrim-modding-tools-core (installed from a GitHub tag) (20)",
+  "21": "Eval Server Calls",
+  "22": "Eval Model Providers",
+  "23": "eval-yaml.mjs (23)",
+  "25": "npcTraits"
+}

@@ -46,13 +46,15 @@ It does what an MCP server cannot in OpenClaw:
 
 ## How well it works
 
-`npm run eval` has an OpenClaw agent do 35 tasks on a test instance and checks what it made against the game: looking
-records up and patching them, 14 kinds of mod — a sword, an armor, a potion, a recipe, an arrow, a dragon shout, a
-magic effect, a leveled list, a chest placed in Breezehome, a perk, a quest with its script, a spell, an NPC and a
-note — each asked plainly and in detail, five times each, and two crash logs read: 155 runs a round. In its latest
-round gemma4:e4b, a small model run locally by Ollama, passed 144 of 155. It runs on an Ollama build with the gemma4
-tool-call repairs of [ollama/ollama#19274](https://github.com/ollama/ollama/pull/19274). A chest placed outdoors, and with
-`--blender` a cell arranged through Blender's MCP server, are tasks of the next rounds.
+`npm run eval` has an OpenClaw agent do 45 tasks on a test instance and checks what it made against the game: looking
+records up and patching them, 19 kinds of mod — a sword, an armor, a potion, a recipe, an arrow, a dragon shout, a
+magic effect, a leveled list, a chest placed in Breezehome and one outdoors, a perk, a quest with its script, a line of
+dialogue for an NPC, a game setting, a keyword, a patch settling a conflict between the DLCs, a spell, an NPC and a
+note — each asked plainly and in detail, five times each, and two crash logs read: 205 runs a round, 215 with
+`--blender`, a cell arranged through Blender's MCP server. In round 133, Qwen3.8-Flash-Next run locally by Strata passed
+174 of 175 (the tasks before dialogue, settings and conflicts); gemma4:e4b, a small model run by Ollama, 144 of 155 in
+round 132, on an Ollama build with the gemma4 tool-call repairs of
+[ollama/ollama#19274](https://github.com/ollama/ollama/pull/19274).
 
 ## Modding with Muddy! 🦀
 

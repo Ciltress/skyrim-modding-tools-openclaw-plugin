@@ -36,7 +36,7 @@ import { BLENDER_MCP_NO_STDIN, blenderMcpLaunch, findBlender } from 'skyrim-modd
 export const PLUGIN_ID = 'skyrim-modding-tools';
 
 /** The plugin's tools that change the instance or download: denied. */
-export const NOT_ALLOWED = ['deployProject', 'installMod', 'downloadNexusFile', 'disableMod', 'enableMod', 'editIni'];
+export const NOT_ALLOWED = ['deployProject', 'installMod', 'downloadNexusFile', 'disableMod', 'enableMod', 'editIni', 'movePlugin', 'setModPriority'];
 
 /**
  * Denied, since an eval runs unwatched: OpenClaw's shell, and the tools that reach a paired device — on the user's

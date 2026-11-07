@@ -258,8 +258,11 @@
       "installMod",
       "disableMod",
       "enableMod",
+      "movePlugin",
+      "setModPriority",
       "editIni",
       "readCrashLog",
+      "findConflicts",
       "healthcheck"
     ]
   },
@@ -338,10 +341,19 @@
     "enableMod": {
       "optional": true
     },
+    "movePlugin": {
+      "optional": true
+    },
+    "setModPriority": {
+      "optional": true
+    },
     "editIni": {
       "optional": true
     },
     "readCrashLog": {
+      "optional": true
+    },
+    "findConflicts": {
       "optional": true
     },
     "healthcheck": {

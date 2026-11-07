@@ -358,6 +358,32 @@ const truth = {
         const far = at => Math.hypot(at[0] - forge[0], at[1] - forge[1]);
         return { position: stones.sort((a, b) => far(a) - far(b))[0] };
     })(),
+    // The dialogue task's NPC: Hulda, who keeps the Bannered Mare in Whiterun.
+    hulda: (await callServerJson('findRecords', { records: ['Hulda'], limit: 1 })).records[0]?.formId ?? fail('the instance has no Hulda'),
+    // The settings task's setting: how high the player jumps, and the game's value.
+    jump: await (async () => {
+        const read = await callServerJson('readRecord', { record: 'fJumpHeightMin' });
+        const value = Number(/^Data:[ \t]*(\S+)/m.exec(read.versions[0].files.map(f => f.text).join('\n'))?.[1]);
+        return Number.isFinite(value) ? { formId: read.formId, value } : fail('could not read fJumpHeightMin');
+    })(),
+    // The keyword task's keywords: the Iron Sword's own, and silver's.
+    ironSwordKeywords: await (async () => {
+        const read = await callServerJson('readRecord', { record: 'IronSword' });
+        return listOf(read.versions[0].files.map(f => f.text).join('\n'), 'Keywords').map(k => k.toLowerCase());
+    })(),
+    silver: (await callServerJson('findRecords', { records: ['WeapMaterialSilver'], limit: 1 })).records[0]?.formId?.toLowerCase()
+        ?? fail('the instance has no WeapMaterialSilver'),
+    // The conflict task's record: Deep Folk Crossing, whose winner (Dragonborn.esm's) lost Dawnguard.esm's keywords and cell.
+    deepFolk: await (async () => {
+        const read = await callServerJson('readRecord', { record: 'DeepFolkCrossingLocation', allVersions: true });
+        const of = plugin => read.versions.find(v => v.plugin.toLowerCase() === plugin)?.files.map(f => f.text).join('\n') ?? '';
+        const dawnguard = of('dawnguard.esm');
+        const keywords = listOf(dawnguard, 'Keywords').map(k => k.toLowerCase());
+        const cells = [...blockOf(dawnguard, 'WorldspaceCellsAdded').matchAll(/^[ \t]*-[ \t]*['"]?(-?\d+),[ \t]*(-?\d+)/gm)].map(m => `${m[1]},${m[2]}`);
+        if (read.winner.toLowerCase() !== 'dragonborn.esm' || keywords.length === 0 || cells.length === 0)
+            fail('Deep Folk Crossing is no longer the conflict the conflict task asks about');
+        return { formId: read.formId, keywords, cells };
+    })(),
     // The Blender task's object: the Thieves Guild strongbox in Whiterun Stables.
     strongbox: await (async () => {
         const read = await callServerJson('readRecord', { record: 'WhiterunStables' });
@@ -1062,6 +1088,37 @@ const has = (text, value) => new RegExp(`(^|[^\\w.])${String(value).replace(/\./
 const hasFormId = (text, formId) =>
     new RegExp(`(^|[^0-9a-f])(0x)?0*${formId.split(':')[0].replace(/^0+/, '')}(?![0-9a-f])`, 'i').test(text);
 
+/**
+ * The dialogue task's records: each topic of the project — its own file in DialogTopics/<topic>/RecordData.yaml — with
+ * the responses in its Responses/ folder, the project's branches and quests.
+ */
+function huldaDialogue() {
+    const { plugin, records } = projectRecords('HuldaRumors');
+    const own = r => !!plugin && !!r.formKey?.toLowerCase().endsWith(`:${plugin.toLowerCase()}`);
+    const topics = records.filter(r => /^DialogTopics\/[^/]+\/RecordData\.yaml$/i.test(r.file)).map(topic => ({
+        ...topic, own: own(topic),
+        responses: records.filter(r => r.file.toLowerCase().startsWith(topic.file.toLowerCase().replace(/recorddata\.yaml$/, 'responses/')))
+    }));
+    return { plugin, topics, branches: records.filter(r => r.group === 'dialogbranches'), quests: records.filter(r => r.group === 'quests' && own(r)) };
+}
+
+/** A field's link, as written: `Branch: HuldaRumorsBranch`, its comment left out. */
+const linkIn = (text, field) => new RegExp(`^${field}:[ \\t]*([^\\s#]+)`, 'm').exec(text ?? '')?.[1];
+
+/** The lines a response says, each Text's Value. */
+const saidIn = text => [...(text ?? '').matchAll(/^[ \t]+Text:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]+Value:[ \t]*(.+?)[ \t]*\r?$/gm)]
+    .map(m => m[1].replace(/^['"]|['"]$/g, ''));
+
+/** The NPCs a response's GetIsID conditions name, as written. */
+const idConditions = text => [...(text ?? '').matchAll(/MutagenObjectType:[ \t]*GetIsIDConditionData[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]+Object:[ \t]*([^\s#]+)/g)]
+    .map(m => m[1]);
+
+/** A flag of a record's own Flags list, which Spriggit writes at the margin (`- TopLevel`), or a part's, indented (hasFlag). */
+const flagged = (text, flag) => new RegExp(`^[ \\t]*-[ \\t]*${flag}[ \\t]*\\r?$`, 'm').test(text ?? '') || hasFlag(text ?? '', flag);
+
+/** The project's copy of a game record, by its FormKey: the file whose FormKey it is. */
+const copyOf = (project, formId) => projectRecords(project).records.find(r => r.formKey?.toLowerCase() === formId.toLowerCase());
+
 const TASKS = [
     {
         id: 'find',
@@ -1596,6 +1653,120 @@ const TASKS = [
             };
         }
     },
+    // Dialogue (since 2026-11-07, the user's "go on with these"): a line the player asks an NPC, and her answer.
+    {
+        id: 'dialogue',
+        skill: 'skyrim-modding-quests-and-scripts',
+        prompt: 'Make a new mod called HuldaRumors in which the player can ask Hulda, who runs the Bannered Mare in Whiterun, ' +
+            '"Heard any rumors lately?", and she answers "They say a dragon was seen over Helgen." Build it, but do not deploy it.',
+        detailed: 'Make a new mod called HuldaRumors with a quest of its own, named "Hulda\'s Rumors", that starts with the game. ' +
+            'In it, a top-level branch of the player\'s dialogue starts the topic "Heard any rumors lately?", and its response, ' +
+            'given to Hulda alone — the innkeeper of the Bannered Mare in Whiterun — says "They say a dragon was seen over ' +
+            'Helgen." Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const { topics, branches, quests } = huldaDialogue();
+            const topic = topics.find(t => t.own && /rumou?rs/i.test(nameOf(t.text)));
+            const answers = (topic?.responses ?? []).filter(r => saidIn(r.text).some(line => /dragon was seen over Helgen/i.test(line)));
+            const forHulda = [];
+            for (const answer of answers)
+                for (const npc of idConditions(answer.text))
+                    if ((await linkTarget('HuldaRumors', npc))?.toLowerCase() === truth.hulda.toLowerCase()) forHulda.push(answer);
+            // The player is offered it: a top-level branch whose first topic it is.
+            const branchKey = topic && await linkTarget('HuldaRumors', linkIn(topic.text, 'Branch'));
+            const branch = branches.find(b => b.formKey?.toLowerCase() === branchKey?.toLowerCase());
+            const starts = branch && (await linkTarget('HuldaRumors', linkIn(branch.text, 'StartingTopic')))?.toLowerCase() === topic.formKey?.toLowerCase();
+            // Its quest runs: one of the project's started with the game, or a game quest that is.
+            const questKey = topic && await linkTarget('HuldaRumors', linkIn(topic.text, 'Quest'));
+            const ownQuest = quests.find(q => q.formKey?.toLowerCase() === questKey?.toLowerCase());
+            let questRuns = !!ownQuest && flagged(ownQuest.text, 'StartGameEnabled');
+            if (!ownQuest && questKey) {
+                try {
+                    questRuns = flagged((await callServerJson('readRecord', { record: questKey })).versions[0].files.map(f => f.text).join('\n'), 'StartGameEnabled');
+                } catch { /* no such quest */ }
+            }
+            return {
+                newTopic: !!topic,
+                herAnswer: answers.length > 0,
+                onlyHulda: forHulda.length > 0,
+                playerOffered: !!branch && flagged(branch.text, 'TopLevel') && !!starts,
+                questRuns,
+                built: builtProject('HuldaRumors', calls)
+            };
+        },
+        detailedCheck: async ({ calls }) => {
+            const { quests } = huldaDialogue();
+            return {
+                ...await TASKS.find(t => t.id === 'dialogue').check({ calls }),
+                questNamed: quests.some(q => /^hulda'?s rumou?rs$/i.test(nameOf(q.text))),
+                // The game offers a start-game-enabled quest's dialogue only where the plugin's SEQ file names it.
+                seqFile: filesUnder(path.join(projectsDir, 'HuldaRumors', 'build')).some(f => /[\\/]seq[\\/]HuldaRumors\.seq$/i.test(f))
+            };
+        }
+    },
+    // A game setting (since 2026-11-07): how high the player jumps.
+    {
+        id: 'setting',
+        skill: 'skyrim-modding-settings',
+        prompt: 'Make a new mod called HigherJump in which the player jumps twice as high as in the game. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called HigherJump that changes the game setting fJumpHeightMin, how high the player jumps, from ' +
+            'the game\'s 76 to 152. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const copy = copyOf('HigherJump', truth.jump.formId);
+            return {
+                jumpSetting: !!copy,
+                twiceAsHigh: !!copy && fieldIs(copy.text, 'Data', truth.jump.value * 2),
+                aFloat: !!copy && /^MutagenObjectType:[ \t]*GameSettingFloat[ \t]*\r?$/m.test(copy.text),
+                built: builtProject('HigherJump', calls)
+            };
+        }
+    },
+    // A keyword (since 2026-11-07): what an item counts as — silver's extra damage to undead.
+    {
+        id: 'keyword',
+        skill: 'skyrim-modding-settings',
+        prompt: 'Make a new mod called SilverIron in which the Iron Sword counts as a silver weapon, so it deals silver\'s extra ' +
+            'damage to the undead. Build it, but do not deploy it.',
+        detailed: 'Make a new mod called SilverIron that gives the game\'s Iron Sword the keyword WeapMaterialSilver, keeping every ' +
+            'keyword it has, so the player\'s SilverPerk adds its damage against undead, ghosts and werewolves. Build it, but do not deploy it.',
+        check: async ({ calls }) => {
+            const copy = copyOf('SilverIron', truth.ironSword.formId);
+            const keywords = copy ? await Promise.all(listOf(copy.text, 'Keywords').map(async k => (await linkTarget('SilverIron', k))?.toLowerCase())) : [];
+            return {
+                ironSwordCopy: !!copy,
+                silverKeyword: keywords.includes(truth.silver),
+                keepsItsKeywords: !!copy && truth.ironSwordKeywords.every(k => keywords.includes(k)),
+                noNewWeapon: newRecords('SilverIron', 'weapons').length === 0,
+                built: builtProject('SilverIron', calls)
+            };
+        }
+    },
+    // A record conflict (since 2026-11-07, "mod conflicts should get some love"): the test instance's DLCs, settled by a patch.
+    {
+        id: 'conflict',
+        skill: 'skyrim-modding-conflicts',
+        prompt: 'In my game, one plugin\'s changes to the location Deep Folk Crossing are lost to another plugin\'s. Find out ' +
+            'which, and make a new mod called ConflictPatch that keeps every plugin\'s changes to it. Build it, but do not deploy it.',
+        detailed: 'In my game, Dragonborn.esm\'s version of the location Deep Folk Crossing (DeepFolkCrossingLocation) wins, and ' +
+            'the keywords and the cell Dawnguard.esm gives it are lost. Make a new mod called ConflictPatch with a patch of that ' +
+            'location that keeps Dragonborn\'s version and puts Dawnguard\'s keywords and cell back. Build it, but do not deploy it.',
+        check: async ({ calls, answer }) => {
+            const copy = copyOf('ConflictPatch', truth.deepFolk.formId);
+            const keywords = copy ? await Promise.all(listOf(copy.text, 'Keywords').map(async k => (await linkTarget('ConflictPatch', k))?.toLowerCase())) : [];
+            const cells = copy ? [...blockOf(copy.text, 'WorldspaceCellsAdded').matchAll(/^[ \t]*-[ \t]*['"]?(-?\d+),[ \t]*(-?\d+)/gm)].map(m => `${m[1]},${m[2]}`) : [];
+            return {
+                locationPatched: !!copy,
+                dawnguardKeywords: truth.deepFolk.keywords.every(k => keywords.includes(k)),
+                dawnguardCell: truth.deepFolk.cells.every(c => cells.includes(c)),
+                namesDawnguard: /dawnguard/i.test(answer ?? ''),
+                built: builtProject('ConflictPatch', calls)
+            };
+        },
+        // The detailed prompt names the plugins itself.
+        detailedCheck: async run => {
+            const { namesDawnguard, ...checks } = await TASKS.find(t => t.id === 'conflict').check(run);
+            return checks;
+        }
+    },
     {
         id: 'spell',
         skill: 'skyrim-modding-magic',
@@ -1932,7 +2103,10 @@ async function checkCases(folder) {
         const callsFile = path.join(projectsDir, 'calls.json');
         const calls = fs.existsSync(callsFile) ? JSON.parse(fs.readFileSync(callsFile, 'utf8'))
             : [{ name: 'buildProject', args: { project }, isError: false, result: '{"status":"success"}' }];
-        const result = await resultOf(task, 0, { answer: '', calls, stop: 'answered', turns: [], started: Date.now(), phases: {} });
+        // And its answer where it has one (answer.txt): the conflict task's checks read it.
+        const answerFile = path.join(projectsDir, 'answer.txt');
+        const answer = fs.existsSync(answerFile) ? fs.readFileSync(answerFile, 'utf8') : '';
+        const result = await resultOf(task, 0, { answer, calls, stop: 'answered', turns: [], started: Date.now(), phases: {} });
         const failed = Object.entries(result.checks).filter(([, ok]) => !ok).map(([check]) => check);
         console.log(`check ${name}: ${result.success ? 'PASS' : 'FAIL'}${failed.length ? ` — failed: ${failed.join(', ')}` : ''}` +
             (result.facts ? ` (facts ${JSON.stringify(result.facts)})` : ''));

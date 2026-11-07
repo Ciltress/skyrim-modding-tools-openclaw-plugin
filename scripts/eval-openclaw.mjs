@@ -484,6 +484,15 @@ const sentTrue = value => value === true || String(value).trim().toLowerCase() =
 export const buildSucceeded = call => !call.isError &&
     (call.name === 'buildProject' || (['editRecord', 'deleteRecord'].includes(call.name) && sentTrue(call.args?.build)));
 
+/** A request's last message, its role and the start of its text: what a request with no tools asked. */
+export const sideAsked = messages => {
+    const last = Array.isArray(messages) ? messages.at(-1) : undefined;
+    if (!last) return null;
+    const text = typeof last.content === 'string' ? last.content
+        : Array.isArray(last.content) ? last.content.map(part => part?.text ?? '').join('') : '';
+    return `${last.role}: ${text.slice(0, 600)}`;
+};
+
 /** OpenClaw's file tools: their answer names the file they wrote, "Successfully wrote 1074 bytes to <path>". */
 const FILE_TOOLS = ['write', 'edit', 'apply_patch'];
 
@@ -714,7 +723,13 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
                 instructionsInPrompt: !!instructionsLine && system.includes(instructionsLine),
                 think: first.think, numCtx: first.numCtx, numPredict: first.numPredict, temperature: first.temperature
             } : null,
-            sideRequests: proxy.log.filter(e => e.tools === 0 && e.model).map(e => ({ url: e.url, model: e.model, status: e.status, ms: e.ms })),
+            // A request with no tools: what OpenClaw asked in it, its last message's start, for the transcripts. Round 134's
+            // recipe #2 and its mini-round's outdoor+detailed #5 ended a turn with no call, and one such request then wrote the
+            // answer, saying the tools were not available.
+            sideRequests: proxy.log.filter(e => e.tools === 0 && e.model).map(e => ({
+                url: e.url, model: e.model, status: e.status, ms: e.ms, messages: e.body?.messages?.length ?? 0,
+                asked: sideAsked(e.body?.messages)
+            })),
             cutAnswers: turnStats.filter(t => t.cut).length,
             // The plugin's build check: how often it asked for a build before the answer, and how often OpenClaw dropped
             // the pass it asked for — it never revises a run after a call it cannot replay, as any plugin tool's.

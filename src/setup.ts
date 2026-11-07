@@ -1,8 +1,10 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { WizardPrompter, WizardSelectParams } from 'openclaw/plugin-sdk/setup';
 import {
-    checkMo2Instance, chooseModManager, discoverSkills, findBlender, MUDDY, MUDDY_WORKSPACE_FILES, mo2InstancesDir, skyrimInstances
+    blenderMcpLaunch, checkMo2Instance, chooseModManager, discoverSkills, findBlender, MUDDY, MUDDY_WORKSPACE_FILES, mo2InstancesDir,
+    skyrimInstances
 } from 'skyrim-modding-tools-core';
 import { PLUGIN_ID } from './settings.js';
 
@@ -301,7 +303,12 @@ export async function askSetup(prompter: WizardPrompter, context: SetupContext, 
 const union = (...lists: readonly string[][]) => [...new Set(lists.flat())];
 
 /** The answers written into a draft of OpenClaw's config: the plugin's settings, and Muddy's agent and model. */
-export function applySetup(draft: Config, choices: SetupChoices, context: Pick<SetupContext, 'projectsDir'>): void {
+/** Where setup puts the core's script that starts Blender's MCP server on Windows: OpenClaw's state folder, which an update keeps. */
+export const blenderMcpScript = (stateDir: string) => path.join(stateDir, 'blender-mcp-no-stdin.py');
+
+export function applySetup(draft: Config, choices: SetupChoices,
+    context: Pick<SetupContext, 'projectsDir'> & Partial<Pick<SetupContext, 'stateDir' | 'platform' | 'env'>>,
+    exists: (file: string) => boolean = fs.existsSync): void {
     const plugin = (((draft.plugins ??= {}).entries ??= {})[PLUGIN_ID] ??= {});
     const settings = (plugin.config ??= {});
     if (choices.instance) settings.mo2Instance = choices.instance;
@@ -344,6 +351,11 @@ export function applySetup(draft: Config, choices: SetupChoices, context: Pick<S
         const server = draft.mcp.servers[name] as Config;
         const blender = server.env?.BLENDER_PATH ? undefined : findBlender(process.platform === 'win32', process.env.PATH, os.homedir());
         if (blender) server.env = { ...server.env, BLENDER_PATH: blender };
+        // On Windows its background tools answer only started through the core's script, which setup copies beside the
+        // config (setupCommand): started as blender-mcp.exe, the Blender each runs waited on OpenClaw's pipe until the timeout.
+        const launch = context.stateDir ? blenderMcpLaunch(server, blenderMcpScript(context.stateDir),
+            { windows: (context.platform ?? process.platform) === 'win32', appData: (context.env ?? process.env).APPDATA, exists }) : undefined;
+        if (launch) Object.assign(server, launch);
     }
     // A model list of his own that leaves the new model out would refuse it.
     if (Array.isArray(before.modelPolicy?.allow) && !before.modelPolicy.allow.includes(muddy.model)) {

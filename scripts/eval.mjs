@@ -1460,7 +1460,9 @@ const TASKS = [
         check: async ({ calls }) => {
             const chests = await outdoorChests('RiverwoodSmithChest');
             const at = truth.grindstone.position;
-            const beside = chests.filter(chest => within(chest.position, at, 400));
+            // Beside it, not in it: a chest built at the grindstone's own position stands inside it in game (the build warns of
+            // that since core v0.2.61), and the outdoor task's third mini-round passed one.
+            const beside = chests.filter(chest => within(chest.position, at, 400) && !within(chest.position, at, 16));
             return {
                 chestOutdoors: chests.length > 0,
                 besideTheGrindstone: beside.length > 0,

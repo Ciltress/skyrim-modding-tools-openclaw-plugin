@@ -78,8 +78,10 @@ The wizard looks like OpenClaw's own setup and asks for:
 He gets his own workspace, `~/.openclaw/workspace-muddy`, with his soul, his identity and his avatar. The projects
 folder is his working folder, and he has the modding skills and the tools he needs: this plugin's, the file tools, the
 web and his memory — and where OpenClaw has [Blender's MCP server](https://www.blender.org/lab/mcp-server/), its tools, to
-arrange a cell `exportCell` put into Blender himself (Blender needs the PyNifly add-on). Run the wizard again to change
-any of it: it updates the Muddy it finds and keeps what you added.
+arrange a cell `exportCell` put into Blender himself (Blender needs the PyNifly add-on). On Windows the wizard starts
+that server through a small script it puts in `~/.openclaw`: started as `blender-mcp.exe`, its background tools wait on
+OpenClaw's pipe and never answer. Run the wizard again to change any of it: it updates the Muddy it finds and keeps what
+you added.
 
 For a script or an agent setting it up for you, `--yes` asks nothing:
 `openclaw skyrim setup --yes --instance "<folder>" --model ollama/<model>`, with `--context`, `--thinking`,

@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { WizardPrompter } from 'openclaw/plugin-sdk/setup-runtime';
 import { MUDDY } from 'skyrim-modding-tools-core';
 import {
-    applySetup, askSetup, defaultsPrompter, findMuddy, muddyTools, setupSummary, type Config, type SetupContext, type SetupFlags
+    applySetup, askSetup, blenderMcpScript, defaultsPrompter, findMuddy, muddyTools, setupSummary, type Config, type SetupContext, type SetupFlags
 } from '../setup.js';
 
 /** `openclaw skyrim setup`: the questions asked, and what the answers write into OpenClaw's config. */
@@ -250,6 +250,22 @@ describe('taking every default (--yes)', () => {
         expect(draft.agents.entries[MUDDY.id].tools.allow).not.toContain('docs__*');
         // A Blender already named is kept.
         expect(draft.mcp.servers.blender.env.BLENDER_PATH).toBe('D:/Blender/blender.exe');
+    });
+
+    it('starts Blender\'s MCP server on Windows through the core\'s no-stdin script in the state folder, once', () => {
+        const python = path.win32.join('C:\\Users\\me\\AppData\\Roaming', 'uv', 'tools', 'blender-mcp', 'Scripts', 'python.exe');
+        const draft: Config = { mcp: { servers: { blender: { command: 'C:\\Users\\me\\.local\\bin\\blender-mcp.exe', args: [] } } } };
+        const choices = { muddy: { agentId: MUDDY.id, model: 'ollama/small:4b', thinking: 'medium', learn: true, workspace: 'W', replaceFiles: false } };
+        const context = { projectsDir: 'P', stateDir: 'C:\\Users\\me\\.openclaw', platform: 'win32' as const, env: { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' } };
+        applySetup(draft, choices as never, context, file => file === python);
+        expect(draft.mcp.servers.blender.command).toBe(python);
+        expect(draft.mcp.servers.blender.args).toEqual([blenderMcpScript('C:\\Users\\me\\.openclaw')]);
+        applySetup(draft, choices as never, context, file => file === python);
+        expect(draft.mcp.servers.blender.args).toHaveLength(1);
+        // Elsewhere as it is.
+        const linux: Config = { mcp: { servers: { blender: { command: '/home/me/.local/bin/blender-mcp' } } } };
+        applySetup(linux, choices as never, { ...context, platform: 'linux' }, () => true);
+        expect(linux.mcp.servers.blender.command).toBe('/home/me/.local/bin/blender-mcp');
     });
 
     it('takes the instance, the model and the rest from the command line', async () => {

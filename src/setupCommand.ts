@@ -3,9 +3,9 @@ import path from 'node:path';
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry';
 import { createClackPrompter } from 'openclaw/plugin-sdk/setup-runtime';
 import { resolveStateDir } from 'openclaw/plugin-sdk/state-paths';
-import { readConfiguration, writeMuddyWorkspace } from 'skyrim-modding-tools-core';
+import { BLENDER_MCP_NO_STDIN, readConfiguration, writeMuddyWorkspace } from 'skyrim-modding-tools-core';
 import { PLUGIN_ID, PLUGIN_ROOT, readSettings } from './settings.js';
-import { applySetup, askSetup, defaultsPrompter, setupSummary, type Config, type SetupFlags } from './setup.js';
+import { applySetup, askSetup, blenderMcpScript, blenderServers, defaultsPrompter, setupSummary, type Config, type SetupFlags } from './setup.js';
 
 /** The root command the plugin owns, as the manifest declares it for OpenClaw's help. */
 export const CLI_COMMAND = {
@@ -46,6 +46,11 @@ async function runSetup(api: OpenClawPluginApi, config: Config, flags: SetupFlag
         return;
     }
     if (choices.muddy) writeMuddyWorkspace(choices.muddy.workspace, { overwrite: choices.muddy.replaceFiles });
+    // The script Blender's MCP server is started through on Windows (applySetup), a copy of this core's: in the state folder,
+    // which no update of the plugin replaces.
+    if (choices.muddy && process.platform === 'win32' && blenderServers(config).length > 0) {
+        fs.copyFileSync(BLENDER_MCP_NO_STDIN, blenderMcpScript(context.stateDir));
+    }
     await api.runtime.config.mutateConfigFile({
         afterWrite: { mode: 'auto' },
         mutate: draft => applySetup(draft as Config, choices, context)

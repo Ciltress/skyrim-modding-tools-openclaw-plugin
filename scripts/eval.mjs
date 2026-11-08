@@ -20,7 +20,8 @@
  * it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
  * loads nothing, and the speed is the server's own timings, when it gives them.
  * --authoring-runs sets the runs of the tasks that write records (sword, armor, potion, recipe, arrow, shout, effect,
- * leveled, world, perk, quest, spell, npc, note, and their `+detailed` runs), --runs those of the others; it defaults
+ * leveled, world, outdoor, perk, quest, dialogue, setting, keyword, conflict, spell, npc, note, and their `+detailed` runs,
+ * and the crash and Papyrus logs read), --runs those of the others; it defaults
  * to --runs. Every miss of rounds 24–31 was an authoring task's, and with three runs each a round's noise was about ±3
  * of 39. --think true|false|<level> passes a thinking level for the
  * run (true is OpenClaw's `medium`, false `off`); unset, the agent's own.
@@ -217,6 +218,9 @@ leftovers.push(projectsDir);
 // The crash-log folder readCrashLog reads in a run: a crash task puts its one log there.
 const crashLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-crash-logs-'));
 leftovers.push(crashLogDir);
+// The Papyrus log folder readPapyrusLog reads in a run: a Papyrus task puts its one log there.
+const papyrusLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skyrim-eval-papyrus-logs-'));
+leftovers.push(papyrusLogDir);
 
 // OpenClaw: its entry script, the proxy in front of the model's server, and the session's configuration.
 const openClaw = await (async () => {
@@ -231,7 +235,7 @@ const openClaw = await (async () => {
     let session;
     try {
         session = writeSessionConfig({
-            dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir, crashLogDir,
+            dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir, crashLogDir, papyrusLogDir,
             agent: opt['openclaw-agent'], profile: opt.profile, allPlugins: opt['all-plugins'],
             blender: opt.blender || (opt.tasks ?? '').split(',').some(id => id.trim() === 'blender')
         });
@@ -1887,8 +1891,56 @@ const TASKS = [
         log: 'crash-2026-10-30-06-24-26.log',
         mod: 'Elder Banner Main Menu',
         named: /elder banner|logo\.nif/i
+    }),
+    // A Papyrus log (since 2026-11-08, the user's "provoke them"): the test instance's own, written with two test mods —
+    // PapyrusNoneFlood's quest calling AddItem on a property nothing fills each second, PapyrusGoneScript's naming a script
+    // no file has.
+    papyrusTask({
+        id: 'papyrus-flood',
+        prompt: 'My Papyrus log is full of errors and my game feels sluggish. Which script causes them, and what is wrong with it?',
+        log: 'game-none-flood.log',
+        checks: answer => ({
+            rightScript: /PNF_QuestScript/i.test(answer),
+            // A call on a property nothing filled: the log's "Cannot call AddItem() on a None object".
+            rightCause: /\bNone\b|not (?:been )?(?:set|filled)|unfilled|empty|no value|nothing (?:in|filled)/i.test(answer)
+        })
+    }),
+    // The same save loaded with PapyrusNoneFlood removed: its script's data left in the save, which the game drops.
+    papyrusTask({
+        id: 'papyrus-history',
+        prompt: 'I removed a mod in the middle of my playthrough, and now my Papyrus log shows errors when I load my save. ' +
+            'Is my save broken? What do the errors mean?',
+        log: 'game-save-history.log',
+        checks: answer => ({
+            rightScript: /PNF_QuestScript/i.test(answer),
+            // What the save still holds of the removed mod, and that the game drops it: usually harmless.
+            savesHistory: /\bsave/i.test(answer) && /remov|uninstall|no longer|left ?over|orphan|leftover/i.test(answer),
+            notBroken: /harmless|safe|not (?:broken|corrupt|a (?:serious )?problem)|nothing to (?:fix|worry)|ignor|usually fine|generally fine|no harm/i.test(answer)
+        })
     })
 ];
+
+/**
+ * A "my Papyrus log" task: the log is the only one in the run's Papyrus log folder, as Papyrus.0.log. Passed when the
+ * answer, after readPapyrusLog, names the script and says what its lines mean, and the run changed nothing — the tools that
+ * would are denied, so trying is enough.
+ */
+function papyrusTask({ id, prompt, log, checks }) {
+    return {
+        id,
+        skill: 'skyrim-modding-crash-analysis',
+        prompt,
+        before: async () => {
+            for (const entry of fs.readdirSync(papyrusLogDir)) fs.rmSync(path.join(papyrusLogDir, entry), { force: true });
+            fs.copyFileSync(path.join(root, 'scripts', 'eval-papyrus-logs', log), path.join(papyrusLogDir, 'Papyrus.0.log'));
+        },
+        check: async ({ answer, calls }) => ({
+            readTheLog: calls.some(c => c.name === 'readPapyrusLog' && !c.isError),
+            ...checks(answer ?? ''),
+            nothingChanged: !calls.some(c => NOT_ALLOWED.includes(c.name))
+        })
+    };
+}
 
 /**
  * Crash Logger SSE's name for a log written at `time`, local time as the game has it, and its CRASH TIME line's.

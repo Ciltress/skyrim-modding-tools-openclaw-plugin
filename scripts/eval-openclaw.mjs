@@ -275,7 +275,7 @@ function holdsPlugin(folder) {
  * OpenAI server's window), the model entry copied when the model had none, the agent, its workspace files, and the
  * plugin's config — the settings the eval's own reads of the instance use too.
  */
-export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, agent, profile,
+export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, papyrusLogDir, agent, profile,
     allPlugins = false, blender = false }) {
     let config;
     try {
@@ -372,7 +372,7 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     // the measured agent. The Skyrim tools are the plugin's alone.
     const load = ((config.plugins.load ??= {}).paths ??= []);
     config.plugins.load.paths = [...load.filter(folder => path.resolve(folder) !== path.resolve(root) && !holdsPlugin(folder)), root];
-    plugin.config = { ...plugin.config, projectsDir, ...(crashLogDir ? { crashLogDir } : {}), ...(agentId ? { agents: [agentId] } : {}), ...(profile ? { profile } : {}) };
+    plugin.config = { ...plugin.config, projectsDir, ...(crashLogDir ? { crashLogDir } : {}), ...(papyrusLogDir ? { papyrusLogDir } : {}), ...(agentId ? { agents: [agentId] } : {}), ...(profile ? { profile } : {}) };
     // MCP servers are the user's, and no run's — but Blender's, for the Blender task (--blender): its tools, `<server>__*`, are
     // the measured agent's then, and its background runs start the Blender BLENDER_PATH names, or one found.
     const blenderServers = blender ? Object.entries(config.mcp?.servers ?? {})

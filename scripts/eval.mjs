@@ -10,9 +10,11 @@
  *                         [--authoring-runs 5] [--tasks find,read] [--max-turns 25] [--think true|false|<level>]
  *                         [--detailed] [--out <file>] [--ollama http://localhost:11434] [--settle 60]
  *                         [--provider ollama|<provider>] [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
- *                         [--all-plugins] [--blender]
+ *                         [--all-plugins] [--blender] [--group coverage]
  *
  * The agent is --openclaw-agent, else the plugin's only modding agent, else the configuration's only agent.
+ * --group coverage runs the coverage tasks (scripts/eval-coverage.mjs: every other kind of record a mod makes, the
+ * navmesh among them) and the LOOT task instead of the main set; --tasks names any task of either.
  * A run loads this plugin and its provider's alone (`plugins.allow`): with all of the configuration's, OpenClaw's start
  * was 119 of round 128's 231 minutes. --all-plugins loads every plugin the configuration has, as the user's gateway does.
  * --provider names the model's provider in OpenClaw's configuration: `ollama` (the default) is Ollama at --ollama;
@@ -88,6 +90,7 @@ import {
     builtAfterLastChange, dealtDamage, firstPersonModelOf, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
     overridesIn, providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
+import { coverageTasks } from './eval-coverage.mjs';
 import { leftEscape, lineShape, scalarValue, textValue, translatedValue } from './eval-yaml.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,6 +102,7 @@ const { values: opt } = parseArgs({
         runs: { type: 'string', default: '3' },
         'authoring-runs': { type: 'string' },
         tasks: { type: 'string' },
+        group: { type: 'string' },
         'max-turns': { type: 'string', default: '25' },
         settle: { type: 'string', default: '60' },
         think: { type: 'string' },
@@ -1920,6 +1924,45 @@ const TASKS = [
     })
 ];
 
+// The coverage tasks (eval-coverage.mjs, since 2026-11-08) and the LOOT task, run with --group coverage: eval.mjs's readers
+// of the project's files and its checks handed over.
+TASKS.push(...coverageTasks({
+    callServerJson, newRecords, projectRecords, nameOf, fieldIs, flagged, listOf, blockOf, entriesOf, linkTarget, editorIdOf,
+    recordAnywhere, effectItems, modelInGame, noOverride, builtProject, containerItems, leveledEntries, keepsEntries, positionOf,
+    projectsDir: () => projectsDir, truth
+}), lootTask());
+
+/**
+ * "Check my load order with LOOT" (since 2026-11-08): sortPlugins' preview, its word on the setup told, nothing written. The
+ * test instance's order is LOOT's already, and LOOT lists most of its Creation Club plugins as dirty. A run that applies
+ * the sort fails, and the profile's plugin lists are put back after every run, as they were before it.
+ */
+function lootTask() {
+    let saved = [];
+    const listFiles = () => {
+        const dir = settings.env.SKYRIM_MO2_INSTANCE;
+        if (!dir || !fs.existsSync(path.join(dir, 'ModOrganizer.ini'))) return [];
+        const profile = /^selected_profile=(?:@ByteArray\()?([^)\r\n]+)\)?/m.exec(fs.readFileSync(path.join(dir, 'ModOrganizer.ini'), 'latin1'))?.[1] ?? 'Default';
+        return ['plugins.txt', 'loadorder.txt'].map(file => path.join(dir, 'profiles', profile, file)).filter(file => fs.existsSync(file));
+    };
+    return {
+        id: 'loot',
+        group: 'coverage',
+        skill: 'skyrim-modding-conflicts',
+        prompt: 'Check my load order with LOOT: would it move any plugin, and does LOOT warn about anything? Do not change anything.',
+        before: async () => { saved = listFiles().map(file => [file, fs.readFileSync(file)]); },
+        after: async () => {
+            for (const [file, bytes] of saved) if (!fs.readFileSync(file).equals(bytes)) fs.writeFileSync(file, bytes);
+        },
+        check: async ({ answer, calls }) => ({
+            sortedWithLoot: calls.some(c => c.name === 'sortPlugins' && !c.isError),
+            nothingApplied: !calls.some(c => c.name === 'sortPlugins' && c.args?.apply === true) && !calls.some(c => NOT_ALLOWED.includes(c.name)),
+            saysInOrder: /already|no (?:plugins?|changes?|moves?)\b|nothing (?:to|would) move|(?:is|are) (?:sorted|in (?:the )?(?:right|correct|LOOT'?s) order)|need(?:s)? no/i.test(answer ?? ''),
+            namesDirty: /dirty|clean(?:ing|ed)?\b|\bITM|deleted references?/i.test(answer ?? '')
+        })
+    };
+}
+
 /**
  * A "my Papyrus log" task: the log is the only one in the run's Papyrus log folder, as Papyrus.0.log. Passed when the
  * answer, after readPapyrusLog, names the script and says what its lines mean, and the run changed nothing — the tools that
@@ -2038,7 +2081,9 @@ async function unchangedCopies() {
 }
 
 // The Blender task runs with --blender alone, or when --tasks names it: it needs Blender's MCP server, which a run keeps only then.
-const wanted = opt.tasks ? opt.tasks.split(',').map(s => s.trim()) : TASKS.filter(t => !t.blender || opt.blender).map(t => t.id);
+// A group's tasks with --group; without, the main set: the tasks of no group.
+const wanted = opt.tasks ? opt.tasks.split(',').map(s => s.trim())
+    : TASKS.filter(t => (opt.group ? t.group === opt.group : !t.group) && (!t.blender || opt.blender)).map(t => t.id);
 const unknownTasks = wanted.filter(id => !TASKS.some(t => t.id === id));
 if (unknownTasks.length) fail(`unknown task(s) ${unknownTasks.join(', ')}; the tasks are ${TASKS.map(t => t.id).join(', ')}.`);
 const tasks = TASKS.filter(t => wanted.includes(t.id)).flatMap(t => [

@@ -71,6 +71,14 @@ export const SETTINGS = {
             'folder, where Crash Logger writes them.',
         advanced: true
     },
+    papyrusLogDir: {
+        variable: 'SKYRIM_PAPYRUS_LOG_DIR',
+        schema: { type: 'string' },
+        label: 'Papyrus log folder',
+        help: 'Where readPapyrusLog reads the game\'s Papyrus.0.log–Papyrus.3.log. Unset: Logs\\Script in the game\'s My Games ' +
+            'folder, where the game writes them with Papyrus logging on.',
+        advanced: true
+    },
     blender: {
         variable: 'SKYRIM_BLENDER',
         schema: { type: 'string' },
@@ -178,7 +186,7 @@ export const UI_HINTS: Record<Field | 'agents', UiHint> = {
 
 /** The Settings page's sections. */
 export const CONFIG_GROUPS = [
-    { id: 'game', title: 'Mod manager', order: 10, properties: ['modManager', 'mo2Instance', 'amethystDir', 'winePrefix', 'crashLogDir'] },
+    { id: 'game', title: 'Mod manager', order: 10, properties: ['modManager', 'mo2Instance', 'amethystDir', 'winePrefix', 'crashLogDir', 'papyrusLogDir'] },
     { id: 'projects', title: 'Projects and scripts', order: 20, properties: ['projectsDir', 'creationKitDir', 'papyrusCompiler', 'blender'] },
     { id: 'agents', title: 'Agents', order: 30, properties: ['agents'] },
     { id: 'nexus', title: 'Nexus Mods', order: 40, properties: ['nexusApiKey'] },

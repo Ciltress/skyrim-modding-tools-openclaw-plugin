@@ -63,6 +63,20 @@ describe('WriteGuard', () => {
             .toEqual({ params: { path: path.join(projects, 'BreezehomeChest', 'plugin', ...cell, 'RecordData.yaml') } });
     });
 
+    it('keeps a dialogue topic\'s path for its file and its responses (round 135\'s dialogue #4 and #5)', () => {
+        project('HuldaRumors');
+        const g = guard();
+        g.afterToolCall(call('newProject', { project: 'HuldaRumors' }), agent);
+        const topic = ['DialogTopics', 'HuldaRumorsTopic'];
+        expect(g.beforeToolCall(call('write', { path: `${topic.join('/')}/RecordData.yaml` }), agent))
+            .toEqual({ params: { path: path.join(projects, 'HuldaRumors', 'plugin', ...topic, 'RecordData.yaml') } });
+        expect(g.beforeToolCall(call('write', { path: `HuldaRumors/${topic.join('/')}/Responses/HuldaRumorsInfo.yaml` }), agent))
+            .toEqual({ params: { path: path.join(projects, 'HuldaRumors', 'plugin', ...topic, 'Responses', 'HuldaRumorsInfo.yaml') } });
+        // A record of a group folder keeps its last two parts, as before.
+        expect(g.beforeToolCall(call('write', { path: 'DialogBranches/HuldaRumorsBranch.yaml' }), agent))
+            .toEqual({ params: { path: path.join(projects, 'HuldaRumors', 'plugin', 'DialogBranches', 'HuldaRumorsBranch.yaml') } });
+    });
+
     it('lets a file into a project\'s plugin folder through, by a relative or a full path, and anything that is no record file', () => {
         project('MavenNote');
         const g = guard();

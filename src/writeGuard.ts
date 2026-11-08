@@ -155,8 +155,13 @@ export class WriteGuard {
         // A cell's file keeps the cell's path, `Cells/<block>/<sub-block>/<cell>/…`: cut to its last two parts, a reference written
         // as `plugin/Cells/0/6/<cell>/Temporary/HuntersChestRef.yaml` went to plugin/Temporary/, where no build reads one (eval
         // round 128's world #3 and #5, world+detailed #2).
+        // A topic's too, `DialogTopics/<topic>/RecordData.yaml` and its `Responses/`: cut so, eval round 135's dialogue #4 and #5
+        // wrote theirs to plugin/HuldaRumorsTopic/ and plugin/Responses/, which each build refused, and answered unbuilt.
         const cellAt = inner.findIndex(part => /^(?:cells|worldspaces)$/i.test(part));
-        const tail = cellAt >= 0 && inner.length - cellAt >= 5 ? inner.slice(cellAt) : inner.slice(-2);
+        const topicAt = inner.findIndex(part => /^dialogtopics$/i.test(part));
+        const tail = cellAt >= 0 && inner.length - cellAt >= 5 ? inner.slice(cellAt)
+            : topicAt >= 0 && inner.length - topicAt >= 3 ? inner.slice(topicAt)
+            : inner.slice(-2);
         const slashed = (target: string) => target.split(path.sep).join('/');
         const pluginDir = project ? path.join(this.projectsDir, project, 'plugin') : undefined;
         const said = `${given} is ${slashed(file)}: in the projects folder, outside every project's plugin folder, where no build ` +

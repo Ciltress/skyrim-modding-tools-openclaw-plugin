@@ -36,6 +36,10 @@
         "type": "string",
         "description": "Where readCrashLog reads Crash Logger SSE's crash-*.log files. Unset: the SKSE folder in the game's My Games folder, where Crash Logger writes them."
       },
+      "papyrusLogDir": {
+        "type": "string",
+        "description": "Where readPapyrusLog reads the game's Papyrus.0.log–Papyrus.3.log. Unset: Logs\\Script in the game's My Games folder, where the game writes them with Papyrus logging on."
+      },
       "blender": {
         "type": "string",
         "description": "The Blender exportCell runs in the background to save a cell's .blend, with the PyNifly add-on. Unset: blender on PATH, else where Blender's installer or Steam puts it."
@@ -112,6 +116,11 @@
       "help": "Where readCrashLog reads Crash Logger SSE's crash-*.log files. Unset: the SKSE folder in the game's My Games folder, where Crash Logger writes them.",
       "advanced": true
     },
+    "papyrusLogDir": {
+      "label": "Papyrus log folder",
+      "help": "Where readPapyrusLog reads the game's Papyrus.0.log–Papyrus.3.log. Unset: Logs\\Script in the game's My Games folder, where the game writes them with Papyrus logging on.",
+      "advanced": true
+    },
     "blender": {
       "label": "Blender",
       "help": "The Blender exportCell runs in the background to save a cell's .blend, with the PyNifly add-on. Unset: blender on PATH, else where Blender's installer or Steam puts it.",
@@ -172,7 +181,8 @@
         "mo2Instance",
         "amethystDir",
         "winePrefix",
-        "crashLogDir"
+        "crashLogDir",
+        "papyrusLogDir"
       ]
     },
     {
@@ -262,6 +272,7 @@
       "setModPriority",
       "editIni",
       "readCrashLog",
+      "readPapyrusLog",
       "findConflicts",
       "healthcheck"
     ]
@@ -351,6 +362,9 @@
       "optional": true
     },
     "readCrashLog": {
+      "optional": true
+    },
+    "readPapyrusLog": {
       "optional": true
     },
     "findConflicts": {

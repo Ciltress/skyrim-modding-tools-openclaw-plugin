@@ -1,16 +1,1 @@
-{
-  "1": "Eval Tasks and Checks",
-  "2": "setup.ts",
-  "3": "Eval OpenClaw Session",
-  "4": "Package Manifest (4)",
-  "5": "with",
-  "7": "stage-clawhub.mjs (7)",
-  "11": "OpenClaw gateway",
-  "14": "skyrim-modding-tools OpenClaw plugin (21)",
-  "16": "blockOf",
-  "17": "Package Manifest (17)",
-  "18": "Eval Record Readers",
-  "21": "Eval Server Calls",
-  "22": "Eval Model Providers",
-  "25": "npcTraits"
-}
+{"0": "eval.mjs", "1": "Eval Tasks and Checks", "2": "setup.ts", "3": "Eval OpenClaw Session", "4": "Package Manifest (4)", "5": "with", "6": "AGENTS.md (guidance for agents on the plugin repo)", "7": "stage-clawhub.mjs (7)", "8": "projectRecords", "9": "registerSkyrimModdingTools", "10": "textCalls.ts", "11": "package.json", "12": "npm run eval (47 tasks, 215 runs a round)", "13": "Plugin helper (SkyrimHelper.exe, core's .NET helper)", "14": "README (skyrim-modding-tools-openclaw-plugin)", "15": "skyrim-modding-tools-core (installed from a GitHub tag)", "16": "Helper NuGet libraries table", "17": "Package Manifest (17)", "18": "Eval Record Readers", "19": "blockOf", "20": "filesUnder", "21": "skyrim-modding-tools-core", "25": "npcTraits", "29": "fail", "30": "ollama", "31": "skills/ folder (skills/Domain/skills)", "34": "npcTraits", "36": "Eval proxy before Ollama"}

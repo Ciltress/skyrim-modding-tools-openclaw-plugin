@@ -354,6 +354,14 @@ describe('modelOf', () => {
         expect(modelOf("Model: {File: 'Clutter\\Books\\Note01.nif', Data: 0x02}\n")).toBe('Clutter\\Books\\Note01.nif');
     });
 
+    it('reads a double-quoted model as YAML does, its escapes decoded, and a plain one as it stands', () => {
+        // Round 136's potion+detailed #3: the game's mesh, its backslashes escaped in a double-quoted string.
+        expect(modelOf('Model:\n  File: "Clutter\\\\Potions\\\\PotionHealthLesser.nif"\nWeight: 0.5\n')).toBe('Clutter\\Potions\\PotionHealthLesser.nif');
+        expect(modelOf('Model: {File: "Clutter\\\\Books\\\\Note01.nif", Data: 0x02}\n')).toBe('Clutter\\Books\\Note01.nif');
+        // A plain scalar keeps its backslashes: a copied JSON escape is a path the game has no file at.
+        expect(modelOf('Model:\n  File: Weapons\\\\FlameBlade.nif\n')).toBe('Weapons\\\\FlameBlade.nif');
+    });
+
     it('reads no model from a record without one, or from another field\'s File', () => {
         expect(modelOf('EditorID: FlameBlade\nName:\n  Value: Flame Blade\n')).toBeUndefined();
         expect(modelOf('EditorID: X\nFirstPersonModel: 1stPersonIronSword\nInventoryArt:\n  File: x.nif\n')).toBeUndefined();

@@ -31,6 +31,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { BLENDER_MCP_NO_STDIN, blenderMcpLaunch, findBlender } from 'skyrim-modding-tools-core';
+import { scalarValue } from './eval-yaml.mjs';
 
 /** The plugin's id, as its manifest and `plugins.entries.<id>` name it. */
 export const PLUGIN_ID = 'skyrim-modding-tools';
@@ -547,13 +548,15 @@ export function levelFollowsPlayer(text, min, max) {
 
 /**
  * A record's model as its file names it, below the Meshes folder — `Model:` then `File:` one deeper, or `Model: {File: …}`
- * — its quotes and a trailing comment left out; undefined where the record has none.
+ * — as YAML reads it, a quoted path decoded and a trailing comment left out; undefined where the record has none.
+ * Round 136's potion+detailed #3 wrote the game's mesh as `File: "Clutter\\Potions\\PotionHealthLesser.nif"`, which
+ * YAML reads with one backslash each, and failed with its doubled ones kept.
  */
 export function modelOf(text) {
     const nested = /^Model:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]+File:[ \t]*(.+?)[ \t]*\r?$/m.exec(text)?.[1];
     const flow = /^Model:[ \t]*\{[^}\r\n]*?\bFile:[ \t]*([^,}\r\n]+?)[ \t]*[,}]/m.exec(text)?.[1];
-    const file = (nested ?? flow)?.replace(/[ \t]+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
-    return file || undefined;
+    const raw = nested ?? flow;
+    return (raw && scalarValue(raw, [])) || undefined;
 }
 
 /**
@@ -562,7 +565,8 @@ export function modelOf(text) {
  * FirstPersonModel, a sword the player holds invisible in first person.
  */
 export function firstPersonModelOf(text) {
-    const value = /^FirstPersonModel:[ \t]*(.*?)[ \t]*\r?$/m.exec(text)?.[1]?.replace(/[ \t]*#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
+    const raw = /^FirstPersonModel:[ \t]*(.*?)[ \t]*\r?$/m.exec(text)?.[1];
+    const value = raw && !raw.startsWith('#') ? scalarValue(raw, []) : undefined;
     return value && !/^(?:null|~)$/i.test(value) ? value : undefined;
 }
 

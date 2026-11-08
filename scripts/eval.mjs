@@ -87,7 +87,7 @@ import {
     builtAfterLastChange, dealtDamage, firstPersonModelOf, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
     overridesIn, providerServer, runOpenClaw, startProxy, writeSessionConfig
 } from './eval-openclaw.mjs';
-import { leftEscape, lineShape, textValue, translatedValue } from './eval-yaml.mjs';
+import { leftEscape, lineShape, scalarValue, textValue, translatedValue } from './eval-yaml.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -601,10 +601,10 @@ function blockOf(text, field) {
         .exec(text ?? '')?.[1] ?? '';
 }
 
-/** The first model file a block names, its comment and quotes left out: an armor's or armor addon's `WorldModel`. */
+/** The first model file a block names as YAML reads it, a quoted path decoded: an armor's or armor addon's `WorldModel`. */
 function fileIn(block) {
-    const file = /^[ \t]+File:[ \t]*(.+?)[ \t]*\r?$/m.exec(block)?.[1]?.replace(/[ \t]+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
-    return file || undefined;
+    const raw = /^[ \t]+File:[ \t]*(.+?)[ \t]*\r?$/m.exec(block)?.[1];
+    return (raw && scalarValue(raw, [])) || undefined;
 }
 
 /** The items of a list at the margin (`Keywords:`, `Armature:`), as block or flow list, their comments left out. */
@@ -811,14 +811,31 @@ async function banditLists() {
     const { plugin, records } = projectRecords(project);
     const copies = records.filter(r => r.group === 'leveleditems' && r.formKey && plugin && !r.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`)
         && /bandit/i.test(/^EditorID:[ \t]*(\S+)/m.exec(r.text)?.[1] ?? ''));
+    const own = newRecords(project, 'leveleditems');
+    const resolve = list => Promise.all(list.map(async e => ({ ...e, formKey: (await linkTarget(project, e.reference))?.toLowerCase() })));
+    /**
+     * The levels at which a list's entries hand out the Silver Sword: an entry naming it, or one naming a leveled list of the
+     * project's own that does, a few lists down — the highest level on the way. Round 136's leveled #3 added a list of its own
+     * holding the sword to the bandits' one-handed weapons, every bandit able to carry it, and failed a check that looked
+     * for the sword in the bandits' list alone.
+     */
+    const silverLevels = async (entries, depth = 0) => {
+        const levels = [];
+        for (const e of entries) {
+            if (truth.silverSword.formIds.includes(e.formKey)) levels.push(e.level);
+            const inner = depth < 3 && own.find(r => r.formKey?.toLowerCase() === e.formKey);
+            if (inner) for (const level of await silverLevels(await resolve(leveledEntries(inner.text)), depth + 1)) levels.push(Math.max(level, e.level));
+        }
+        return levels;
+    };
     return Promise.all(copies.map(async copy => {
-        const resolve = list => Promise.all(list.map(async e => ({ ...e, formKey: (await linkTarget(project, e.reference))?.toLowerCase() })));
         let theirs = [];
         try {
             const read = await callServerJson('readRecord', { record: copy.formKey });
             theirs = await resolve(leveledEntries(read.versions[0].files.map(f => f.text).join('\n')));
         } catch { /* a list the load order has not */ }
-        return { ...copy, entries: await resolve(leveledEntries(copy.text)), theirs };
+        const entries = await resolve(leveledEntries(copy.text));
+        return { ...copy, entries, theirs, silver: await silverLevels(entries) };
     }));
 }
 
@@ -1456,7 +1473,7 @@ const TASKS = [
             'Build it, but do not deploy it.',
         check: async ({ calls }) => {
             const lists = await banditLists();
-            const silver = lists.filter(list => list.entries.some(e => truth.silverSword.formIds.includes(e.formKey)));
+            const silver = lists.filter(list => list.silver.length > 0);
             return {
                 banditListChanged: silver.length > 0,
                 // Added to, not replaced: every entry the game's list has is in the copy.
@@ -1468,9 +1485,9 @@ const TASKS = [
             const lists = await banditLists();
             return {
                 ...await TASKS.find(t => t.id === 'leveled').check({ calls }),
-                atLevel1: lists.some(list => list.entries.some(e => truth.silverSword.formIds.includes(e.formKey) && e.level === 1)),
+                atLevel1: lists.some(list => list.silver.includes(1)),
                 aOneHandedList: lists.some(list => /1H|OneHand/i.test(/^EditorID:[ \t]*(\S+)/m.exec(list.text)?.[1] ?? '')
-                    && list.entries.some(e => truth.silverSword.formIds.includes(e.formKey)))
+                    && list.silver.length > 0)
             };
         }
     },
@@ -1672,12 +1689,14 @@ const TASKS = [
                 for (const npc of idConditions(answer.text))
                     if ((await linkTarget('HuldaRumors', npc))?.toLowerCase() === truth.hulda.toLowerCase()) forHulda.push(answer);
             // The player is offered it: a top-level branch whose first topic it is.
+            // No topic, no branch: round 135's dialogue #4 and #5 wrote none, and a branch file with no FormKey line matched the
+            // topic's missing one, the check throwing on it.
             const branchKey = topic && await linkTarget('HuldaRumors', linkIn(topic.text, 'Branch'));
-            const branch = branches.find(b => b.formKey?.toLowerCase() === branchKey?.toLowerCase());
-            const starts = branch && (await linkTarget('HuldaRumors', linkIn(branch.text, 'StartingTopic')))?.toLowerCase() === topic.formKey?.toLowerCase();
+            const branch = branchKey ? branches.find(b => b.formKey?.toLowerCase() === branchKey.toLowerCase()) : undefined;
+            const starts = !!branch && (await linkTarget('HuldaRumors', linkIn(branch.text, 'StartingTopic')))?.toLowerCase() === topic?.formKey?.toLowerCase();
             // Its quest runs: one of the project's started with the game, or a game quest that is.
             const questKey = topic && await linkTarget('HuldaRumors', linkIn(topic.text, 'Quest'));
-            const ownQuest = quests.find(q => q.formKey?.toLowerCase() === questKey?.toLowerCase());
+            const ownQuest = questKey ? quests.find(q => q.formKey?.toLowerCase() === questKey.toLowerCase()) : undefined;
             let questRuns = !!ownQuest && flagged(ownQuest.text, 'StartGameEnabled');
             if (!ownQuest && questKey) {
                 try {

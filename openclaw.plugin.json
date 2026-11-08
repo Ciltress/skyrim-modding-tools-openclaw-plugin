@@ -257,6 +257,7 @@
       "deleteRecord",
       "editTerrain",
       "generateNavmesh",
+      "newWorldspace",
       "buildProject",
       "deployProject",
       "pullProject",
@@ -312,6 +313,9 @@
       "optional": true
     },
     "generateNavmesh": {
+      "optional": true
+    },
+    "newWorldspace": {
       "optional": true
     },
     "buildProject": {

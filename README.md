@@ -13,9 +13,16 @@
 
 **Mod Skyrim Special Edition with your OpenClaw agents** — even with a small model running on your own PC. Ask an
 agent for a flaming sword, a dragon shout, a chest in Breezehome or one outdoors in Riverwood, a quest that starts with
-the game, a patch, a mod from Nexus or the reason for your last crash: this plugin gives it the tools to look into your
-whole load order, write mods as text projects, build them into plugins and deploy them into Mod Organizer or Amethyst,
-install mods, read crash logs, and arrange a cell in Blender and bring it back.
+the game, a patch, a navmesh for a new house, a valley of your own from a heightmap, a mod from Nexus or the reason for
+your last crash: this plugin gives it the tools to look into your whole load order, write mods as text projects, build
+them into plugins and deploy them into Mod Organizer or Amethyst, install mods, sort the load order with LOOT, and read
+crash logs.
+
+**Blender, land and navmesh, no Creation Kit.** A cell opens in Blender with its objects, meshes and textures (PyNifly
+add-on): the agent or you move the furniture, sculpt the ground and touch up the navmesh — by hand or, where OpenClaw has
+[Blender's MCP server](https://www.blender.org/lab/mcp-server/), through its tools — and it all comes back into the
+project. Without Blender, the ground can be flattened, raised, lowered or smoothed, a cell's navmesh is made from what
+stands in it, and a new worldspace comes from a heightmap.
 
 The tools are [skyrim-modding-tools-core](https://github.com/Ciltress/skyrim-modding-tools-core)'s; the
 [MCP server](https://github.com/Ciltress/skyrim-modding-tools-mcp) serves the same tools to any MCP client.
@@ -177,6 +184,8 @@ npm run eval -- --openclaw-agent <agent> --runs 1 --authoring-runs 5 --detailed 
 ```
 
 `--blender` adds the task that arranges a cell through Blender's MCP server, which the agent then needs in OpenClaw.
+`--group coverage` runs the coverage tasks instead of the main set: the kinds of mod object the main tasks leave out,
+navmeshes indoors and outdoors among them, and the LOOT task. A task joins the main set once its gaps are closed.
 
 See [AGENTS.md](AGENTS.md).
 

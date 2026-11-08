@@ -13,6 +13,8 @@ from NuGet, each under its own license; the source of each is its project at the
 
 | Package | Version | License | Source |
 |---|---|---|---|
+| DotRecast.Core | 2026.3.1 | Zlib | https://github.com/ikpil/DotRecast |
+| DotRecast.Recast | 2026.3.1 | Zlib | https://github.com/ikpil/DotRecast |
 | DynamicData | 9.4.31 | MIT | https://github.com/reactiveui/DynamicData |
 | FluentResults | 3.15.2 | MIT | https://github.com/altmann/FluentResults |
 | GameFinder.Common | 4.9.0 | GPL-3.0-only | https://github.com/erri120/GameFinder |
@@ -28,12 +30,14 @@ from NuGet, each under its own license; the source of each is its project at the
 | Loqui | 3.7.0 | GPL-3.0 | https://github.com/Noggog/Loqui |
 | Microsoft.Extensions.DependencyInjection.Abstractions | 9.0.4 | MIT | https://github.com/dotnet/runtime |
 | Microsoft.Extensions.Logging.Abstractions | 9.0.4 | MIT | https://github.com/dotnet/runtime |
+| miniball-devel0 | 1.0.4 | Apache-2.0 | https://github.com/SearchAThing-forks/miniball |
 | Mutagen.Bethesda.Core | 0.54.0 | GPL-3.0-only | https://github.com/Mutagen-Modding/Mutagen |
 | Mutagen.Bethesda.Kernel | 0.54.0 | GPL-3.0-only | https://github.com/Mutagen-Modding/Mutagen |
 | Mutagen.Bethesda.Serialization | 1.38.6 | GPL-3.0-only | https://github.com/Mutagen-Modding/Mutagen.Bethesda.Serialization |
 | Mutagen.Bethesda.Serialization.Yaml | 1.38.6 | GPL-3.0-only | https://github.com/Mutagen-Modding/Mutagen.Bethesda.Serialization |
 | Mutagen.Bethesda.Skyrim | 0.54.0 | GPL-3.0-only | https://github.com/Mutagen-Modding/Mutagen |
 | NexusMods.Paths | 0.19.1 | GPL-3.0-only | https://github.com/Nexus-Mods/NexusMods.App |
+| Nifly | 1.1.0 | GPL-3.0 | https://github.com/ousnius/NiflySharp |
 | Noggog.CSharpExt | 4.3.0 | GPL-3.0 | https://github.com/Noggog/CSharpExt |
 | OneOf | 3.0.271 | MIT | https://github.com/mcintyre321/OneOf |
 | Reloaded.Memory | 9.4.2 | GPL-3.0, parts MIT (marked in its source) | https://github.com/Reloaded-Project/Reloaded.Memory |

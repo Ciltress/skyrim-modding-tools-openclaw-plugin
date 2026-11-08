@@ -255,6 +255,8 @@
       "editRecord",
       "moveRecord",
       "deleteRecord",
+      "editTerrain",
+      "generateNavmesh",
       "buildProject",
       "deployProject",
       "pullProject",
@@ -269,6 +271,7 @@
       "disableMod",
       "enableMod",
       "movePlugin",
+      "sortPlugins",
       "setModPriority",
       "editIni",
       "readCrashLog",
@@ -303,6 +306,12 @@
       "optional": true
     },
     "deleteRecord": {
+      "optional": true
+    },
+    "editTerrain": {
+      "optional": true
+    },
+    "generateNavmesh": {
       "optional": true
     },
     "buildProject": {
@@ -353,6 +362,9 @@
       "optional": true
     },
     "movePlugin": {
+      "optional": true
+    },
+    "sortPlugins": {
       "optional": true
     },
     "setModPriority": {

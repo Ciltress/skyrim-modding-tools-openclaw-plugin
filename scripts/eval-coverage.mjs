@@ -83,6 +83,8 @@ export function coverageTasks(h) {
         return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /\.psc$/i.test(f)).map(f => fs.readFileSync(path.join(dir, f), 'utf8')) : [];
     };
     const nothingElse = project => h.noOverride(project);
+    /** riverwoodRegions' answer, read once: declared here, above the return, as the checks run after it. */
+    let riverwood;
 
     /** A task of the group: `check` and `detailedCheck` get the run, as the main tasks' do. */
     const task = (id, skill, prompt, detailed, check, detailedCheck) => ({
@@ -878,7 +880,6 @@ export function coverageTasks(h) {
     }
 
     /** The regions the game's Riverwood cell names, as FormKeys. */
-    let riverwood;
     async function riverwoodRegions() {
         riverwood ??= h.callServerJson('readRecord', { record: 'Riverwood' })
             .then(read => Promise.all(h.listOf(read.versions[0].files.map(f => f.text).join('\n'), 'Regions')

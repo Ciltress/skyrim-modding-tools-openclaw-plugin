@@ -45,10 +45,16 @@ export function coverageTasks(h) {
     const materials = async (project, text) => Promise.all(h.containerItems(text ?? '').map(async ({ link, count }) =>
         ({ id: (await h.editorIdOf(project, link))?.toLowerCase(), count })));
     const counts = (list, editorId) => list.filter(m => m.id === editorId.toLowerCase()).reduce((n, m) => n + (m.count || 0), 0);
-    /** The project's new recipes that make a record, by its editor ID. */
-    const recipesFor = async (project, editorIds) => {
+    /** The project's copies of records of other plugins — its overrides. */
+    const overridesOf = project => {
+        const { plugin, records } = h.projectRecords(project);
+        return records.filter(r => r.formKey && plugin && !r.formKey.toLowerCase().endsWith(`:${plugin.toLowerCase()}`));
+    };
+    /** The project's new recipes that make a record, by its editor ID — or, with `copies`, its copies of the game's. */
+    const recipesFor = async (project, editorIds, copies = false) => {
         const wanted = editorIds.map(id => id.toLowerCase());
-        const all = await Promise.all(h.newRecords(project, 'constructibleobjects').map(async r =>
+        const pool = copies ? overridesOf(project).filter(r => r.group === 'constructibleobjects') : h.newRecords(project, 'constructibleobjects');
+        const all = await Promise.all(pool.map(async r =>
             ({ ...r, makes: (await h.editorIdOf(project, linkOf(r.text, 'CreatedObject')))?.toLowerCase() })));
         return all.filter(r => wanted.includes(r.makes));
     };
@@ -83,6 +89,11 @@ export function coverageTasks(h) {
         id, group: 'coverage', skill, prompt, detailed, check,
         detailedCheck: async run => ({ ...await check(run), ...await detailedCheck(run) })
     });
+    /** A task whose checks named are the plain ask's alone: the detailed ask does not ask for what they hold to. */
+    const plainOnly = (t, keys) => ({
+        ...t,
+        detailedCheck: async run => Object.fromEntries(Object.entries(await t.detailedCheck(run)).filter(([key]) => !keys.includes(key)))
+    });
     const ask = (mod, what) => `Make a new mod called ${mod} ${what} Build it, but do not deploy it.`;
 
     return [
@@ -90,7 +101,7 @@ export function coverageTasks(h) {
         task('ingredient', 'skyrim-modding-items-and-crafting',
             ask('GlacialSalt', 'with a new ingredient named "Glacial Salt" that restores magicka and resists frost.'),
             ask('GlacialSalt', 'with a new ingredient named "Glacial Salt", made like Frost Salts — its model and sounds — with four ' +
-                'effects: Restore Magicka, Resist Frost, Fortify Destruction and Weakness to Fire; a value of 40 and a weight of 0.25.'),
+                'effects: Restore Magicka, Resist Frost, Fortify Destruction and Weakness to Fire. It is worth 40 gold and weighs 0.25.'),
             async ({ calls }) => {
                 const it = named('GlacialSalt', 'ingredients', /^glacial salt$/i);
                 const all = await effects('GlacialSalt', it?.text);
@@ -239,20 +250,25 @@ export function coverageTasks(h) {
             ask('TemperNordSword', 'with a tempering recipe for the Ancient Nord Sword, made like the Iron Sword\'s — at the grindstone, ' +
                 'with the conditions the game\'s tempering recipes have — from 1 Iron Ingot.'),
             async ({ calls }) => {
-                const [recipe] = await recipesFor('TemperNordSword', h.truth.ancientNordSword.editorIds);
+                const [own] = await recipesFor('TemperNordSword', h.truth.ancientNordSword.editorIds);
+                // The game's own tempering recipe of the sword changed to one iron ingot is what the plain ask names too (the
+                // user's call of 2026-11-09): every run of eval round 139 changed TemperWeaponDraugrSword so. That copy, and no other.
+                const [copy] = own ? [] : await recipesFor('TemperNordSword', h.truth.ancientNordSword.editorIds, true);
+                const recipe = own ?? copy;
                 const mats = await materials('TemperNordSword', recipe?.text);
+                const others = overridesOf('TemperNordSword').filter(r => r.file !== copy?.file);
                 return {
                     temperRecipe: !!recipe,
                     atTheGrindstone: await names('TemperNordSword', linkOf(recipe?.text, 'WorkbenchKeyword'), 'CraftingSmithingSharpeningWheel'),
-                    oneIronIngot: counts(mats, 'IngotIron') === 1,
-                    noOverride: nothingElse('TemperNordSword'),
+                    oneIronIngot: counts(mats, 'IngotIron') === 1 && mats.length === 1,
+                    noOverride: own ? nothingElse('TemperNordSword') : others.length === 0,
                     built: built('TemperNordSword', calls)
                 };
             },
             async () => {
                 const [recipe] = await recipesFor('TemperNordSword', h.truth.ancientNordSword.editorIds);
                 // The game's tempering recipes are shown only with the item improvable: EPTemperingItemIsEnchanted and the perk checks.
-                return { hasConditions: h.entriesOf(recipe?.text ?? '', 'Conditions').length > 0 };
+                return { newRecipe: !!recipe, hasConditions: h.entriesOf(recipe?.text ?? '', 'Conditions').length > 0 };
             }),
         task('smelting', 'skyrim-modding-items-and-crafting',
             ask('SmeltSilver', 'that lets the player melt a Silver Sword down into 2 silver ingots at the smelter.'),
@@ -324,8 +340,13 @@ export function coverageTasks(h) {
             ask('BanditFrost', 'in which the leveled spell list LSpellBandit01FireFrostShock also holds the spell Ice Spike at level ' +
                 '1, keeping everything it holds.'),
             async ({ calls }) => {
-                const { checks } = await listGains('BanditFrost', /bandit/i, ['IceSpike', 'IceSpikeLeftHand', 'IceSpikeRightHand'], 'leveled-spell');
-                return { ...checks, built: built('BanditFrost', calls) };
+                const spells = ['IceSpike', 'IceSpikeLeftHand', 'IceSpikeRightHand'];
+                const { checks } = await listGains('BanditFrost', /bandit/i, spells, 'leveled-spell');
+                // Or each bandit mage's template given the spell, its own spells kept: the bandit mages take their spells from
+                // the six EncBandit0<n>TemplateMagic (eval round 139's leveled-spell #1 copied five of them).
+                const templates = checks.listChanged ? null : await templatesGain('BanditFrost', [1, 2, 3, 4, 5, 6].map(n => `EncBandit0${n}TemplateMagic`), spells);
+                return templates ? { listChanged: templates.gained, keepsItsEntries: templates.kept, built: built('BanditFrost', calls) }
+                    : { ...checks, built: built('BanditFrost', calls) };
             },
             async () => {
                 const { list } = await listGains('BanditFrost', /bandit/i, ['IceSpike', 'IceSpikeLeftHand', 'IceSpikeRightHand'], 'leveled-spell');
@@ -340,10 +361,13 @@ export function coverageTasks(h) {
             async ({ calls }) => {
                 const it = named('SpellswordClass', 'classes', /^spellsword$/i);
                 const weights = weightsOf(it?.text);
-                const top = Object.entries(weights).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => k.toLowerCase());
+                const weight = skill => Object.entries(weights).find(([k]) => k.toLowerCase() === skill)?.[1] ?? 0;
+                // Both at or above the second highest weight: a tie at the top favors them as well (eval round 139's class runs
+                // weighted them alike with a third skill, and the first two of the sort were the others).
+                const second = Object.values(weights).sort((a, b) => b - a)[1] ?? 0;
                 return {
                     newClass: !!it,
-                    favorsBoth: top.includes('onehanded') && top.includes('destruction'),
+                    favorsBoth: second > 0 && weight('onehanded') >= second && weight('destruction') >= second,
                     noOverride: nothingElse('SpellswordClass'),
                     built: built('SpellswordClass', calls)
                 };
@@ -387,18 +411,26 @@ export function coverageTasks(h) {
                 const npc = named('BanneredMareRegular', 'npcs', /^old hroki$/i);
                 const packages = await Promise.all(h.listOf(npc?.text ?? '', 'Packages').map(p => h.recordAnywhere('BanneredMareRegular', p)));
                 const sandbox = await idOf('Sandbox');
-                const own = h.newRecords('BanneredMareRegular', 'packages');
                 const sandboxes = [];
                 for (const p of packages) if (p && (await h.linkTarget('BanneredMareRegular', linkOf(p, 'PackageTemplate')))?.toLowerCase() === sandbox) sandboxes.push(p);
                 return {
                     newNpc: !!npc,
                     placedThere: await placesOwn('BanneredMareRegular', 'WhiterunBanneredMare', npc),
                     sandboxes: sandboxes.length > 0,
-                    ownPackage: own.length > 0,
                     built: built('BanneredMareRegular', calls)
                 };
             },
-            async () => ({})),
+            // A package of the mod's own is the detailed ask's alone: plainly asked, a game package of the Sandbox template the
+            // NPC lists does the same (eval round 139's package runs).
+            async () => {
+                const npc = named('BanneredMareRegular', 'npcs', /^old hroki$/i);
+                const listed = await Promise.all(h.listOf(npc?.text ?? '', 'Packages').map(async p => (await h.linkTarget('BanneredMareRegular', p))?.toLowerCase()));
+                const sandbox = await idOf('Sandbox');
+                const own = [];
+                for (const p of h.newRecords('BanneredMareRegular', 'packages'))
+                    if (listed.includes(p.formKey?.toLowerCase()) && (await h.linkTarget('BanneredMareRegular', linkOf(p.text, 'PackageTemplate')))?.toLowerCase() === sandbox) own.push(p);
+                return { ownSandbox: own.length > 0 };
+            }),
         task('follower', 'skyrim-modding-npcs',
             ask('RiverwoodFollower', 'with a new follower named "Sigrid Stormhand" in Riverwood\'s Sleeping Giant Inn, whom the player ' +
                 'can ask to follow them.'),
@@ -558,7 +590,7 @@ export function coverageTasks(h) {
                     startsWithTheGame: h.newRecords('WelcomeMessage', 'quests').some(q => h.flagged(q.text, 'StartGameEnabled'))
                 };
             }),
-        task('storymanager', 'skyrim-modding-quests-and-scripts',
+        plainOnly(task('storymanager', 'skyrim-modding-quests-and-scripts',
             ask('ArrivalRumor', 'with a quest the story manager starts each time the player arrives in a new location.'),
             ask('ArrivalRumor', 'with a quest of its own, started by the story manager on the Change Location event: a quest node ' +
                 'of the mod\'s own under the game\'s Change Location event branch that names the quest.'),
@@ -573,10 +605,14 @@ export function coverageTasks(h) {
                     nodeNamesIt: quests.some(q => named.includes(q.formKey?.toLowerCase())),
                     // The Change Location event's code, as the game's quests started on it have it (DA09ChangeLocation).
                     onChangeLocation: quests.some(q => /^Event:[ \t]*CLOC[ \t]*\r?$/m.test(q.text)),
+                    // Each time: the story manager starts a quest only while it is stopped, and never again one that runs once —
+                    // eval round 139's storymanager #3 passed with a quest that showed its message once and ran on.
+                    startsAgain: quests.some(q => !h.listOf(q.text, 'Flags').some(f => /RunOnce/i.test(f)))
+                        && scriptSources('ArrivalRumor').some(s => /\bStop\s*\(\s*\)/i.test(s.replace(/;.*$/gm, ''))),
                     built: built('ArrivalRumor', calls)
                 };
             },
-            async () => ({})),
+            async () => ({})), ['startsAgain']),
 
         // ---- The world's objects ----
         task('static', 'skyrim-modding-world',
@@ -690,20 +726,20 @@ export function coverageTasks(h) {
             ask('DangerousEmbershard', 'in which the enemies of Embershard Mine, near Riverwood, are at least level 20.'),
             ask('DangerousEmbershard', 'with a new encounter zone of its own, levels 20 to 40, set on the Embershard Mine cell, EmbershardMine01.'),
             async ({ calls }) => {
-                const zones = h.newRecords('DangerousEmbershard', 'encounterzones');
-                const cell = copyNamed('DangerousEmbershard', 'EmbershardMine01');
-                const zoneLink = linkOf(cell?.text, 'EncounterZone');
-                const zone = zoneLink ? await h.recordAnywhere('DangerousEmbershard', zoneLink) : '';
+                const { zone } = await mineZone('DangerousEmbershard');
                 return {
-                    cellChanged: !!cell,
+                    // The mine's cell given another zone, or the zone it has changed: EmbershardMineZone is the mine's, and every
+                    // plain run of eval round 139 raised its levels so.
+                    mineChanged: !!copyNamed('DangerousEmbershard', 'EmbershardMine01') || !!copyNamed('DangerousEmbershard', 'EmbershardMineZone'),
                     zoneAtLeast20: Number(/^MinLevel:[ \t]*(\d+)/m.exec(zone ?? '')?.[1] ?? 0) >= 20,
-                    ownZone: zones.length > 0,
                     built: built('DangerousEmbershard', calls)
                 };
             },
             async () => {
+                const { key } = await mineZone('DangerousEmbershard');
                 const zones = h.newRecords('DangerousEmbershard', 'encounterzones');
-                return { upTo40: zones.some(z => h.fieldIs(z.text, 'MaxLevel', 40) && h.fieldIs(z.text, 'MinLevel', 20)) };
+                const own = zones.find(z => z.formKey?.toLowerCase() === key);
+                return { ownZone: !!own, upTo40: !!own && h.fieldIs(own.text, 'MaxLevel', 40) && h.fieldIs(own.text, 'MinLevel', 20) };
             }),
         task('region', 'skyrim-modding-world',
             ask('SnowyRiverwood', 'that makes it snow around Riverwood.'),
@@ -711,15 +747,28 @@ export function coverageTasks(h) {
                 'weather SkyrimOvercastSnow at chance 100.'),
             async ({ calls }) => {
                 const regions = h.newRecords('SnowyRiverwood', 'regions');
-                const text = regions.map(r => r.text).join('\n') + h.projectRecords('SnowyRiverwood').records.filter(r => r.group === 'weathers').map(r => r.text).join('\n');
+                const named = await riverwoodRegions();
+                // A new region with an area, or a game region Riverwood's cell names, its weather made snow: eval round 139's
+                // region #3 changed WeatherPineForest so.
+                const copies = overridesOf('SnowyRiverwood').filter(r => r.group === 'regions' && named.includes(r.formKey?.toLowerCase()));
+                const over = [...regions.filter(r => h.entriesOf(r.text, 'RegionAreas').length > 0), ...copies];
+                const weathers = h.projectRecords('SnowyRiverwood').records.filter(r => r.group === 'weathers').map(r => r.text).join('\n');
                 return {
-                    newRegion: regions.length > 0,
-                    hasArea: regions.some(r => h.entriesOf(r.text, 'RegionAreas').length > 0),
-                    snowWeather: /Snow/i.test(text),
-                    built: built('SnowyRiverwood', calls)
+                    overRiverwood: over.length > 0,
+                    snowWeather: over.some(r => /Snow/i.test(r.text)) || (over.length > 0 && /Snow/i.test(weathers)),
+                    built: built('SnowyRiverwood', calls),
+                    // Unscored until a game test says whether it takes it: the game's cells name their regions in their own
+                    // Regions list, and a new region is named in none of the game's.
+                    facts: { namedInRiverwoodCells: await namedInCells('SnowyRiverwood', regions) }
                 };
             },
-            async () => ({})),
+            async () => {
+                const regions = h.newRecords('SnowyRiverwood', 'regions');
+                return {
+                    newRegion: regions.length > 0,
+                    hasArea: regions.some(r => h.entriesOf(r.text, 'RegionAreas').length > 0)
+                };
+            }),
 
         // ---- Navmeshes (generateNavmesh, since 2026-11-08) ----
         task('navmesh', 'skyrim-modding-world',
@@ -796,6 +845,54 @@ export function coverageTasks(h) {
             } catch { /* a list the load order has not */ }
         }
         return { list, checks: { listChanged: !!list, keepsItsEntries: keeps } };
+    }
+
+    /** Whether the project copies each of the game's NPCs named, each copy holding one of the spells and the spells it had. */
+    async function templatesGain(project, editorIds, spells) {
+        const wanted = (await Promise.all(spells.map(idOf))).filter(Boolean);
+        const spellsOf = text => Promise.all(h.listOf(text ?? '', 'ActorEffect').map(async s => (await h.linkTarget(project, s))?.toLowerCase()));
+        let gained = true, kept = true;
+        for (const editorId of editorIds) {
+            const copy = copyNamed(project, editorId);
+            if (!copy) return { gained: false, kept: false };
+            const now = await spellsOf(copy.text);
+            if (!now.some(s => wanted.includes(s))) gained = false;
+            try {
+                const read = await h.callServerJson('readRecord', { record: copy.formKey });
+                if (!(await spellsOf(read.versions[0].files.map(f => f.text).join('\n'))).every(s => now.includes(s))) kept = false;
+            } catch { kept = false; }
+        }
+        return { gained, kept };
+    }
+
+    /** The zone Embershard Mine's cell has with the project: its copy's, or the game's — and that zone's text, the project's copy first. */
+    async function mineZone(project) {
+        const cell = copyNamed(project, 'EmbershardMine01');
+        let link = linkOf(cell?.text, 'EncounterZone');
+        if (!cell) {
+            try {
+                link = linkOf((await h.callServerJson('readRecord', { record: 'EmbershardMine01' })).versions[0].files.map(f => f.text).join('\n'), 'EncounterZone');
+            } catch { /* a load order without the mine */ }
+        }
+        return { key: link ? (await h.linkTarget(project, link))?.toLowerCase() : undefined, zone: link ? await h.recordAnywhere(project, link) : '' };
+    }
+
+    /** The regions the game's Riverwood cell names, as FormKeys. */
+    let riverwood;
+    async function riverwoodRegions() {
+        riverwood ??= h.callServerJson('readRecord', { record: 'Riverwood' })
+            .then(read => Promise.all(h.listOf(read.versions[0].files.map(f => f.text).join('\n'), 'Regions')
+                .map(async r => (await h.linkTarget('SnowyRiverwood', r))?.toLowerCase())))
+            .catch(() => []);
+        return riverwood;
+    }
+
+    /** Whether the project's copy of the Riverwood cell names one of the regions in its Regions list. */
+    async function namedInCells(project, regions) {
+        const cell = copyNamed(project, 'Riverwood');
+        if (!cell || regions.length === 0) return false;
+        const named = await Promise.all(h.listOf(cell.text, 'Regions').map(async r => (await h.linkTarget(project, r))?.toLowerCase()));
+        return regions.some(r => named.includes(r.formKey?.toLowerCase()));
     }
 
     /** The project's copy of a game record, by its editor ID: a file of the record's FormKey. */

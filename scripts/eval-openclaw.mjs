@@ -498,7 +498,8 @@ export const sideAsked = messages => {
 const FILE_TOOLS = ['write', 'edit', 'apply_patch'];
 
 /** The plugin's tools that change a project's record files when they succeed. */
-const CHANGING_TOOLS = ['addPatch', 'editRecord', 'moveRecord', 'deleteRecord', 'pullProject'];
+const CHANGING_TOOLS = ['addPatch', 'editRecord', 'moveRecord', 'deleteRecord', 'pullProject', 'editTerrain', 'generateNavmesh', 'newCell',
+    'newWorldspace', 'importCell'];
 
 /**
  * A recorded call that changed a project of the projects folder: a file tool whose answer says it wrote there, or one
@@ -508,6 +509,9 @@ const CHANGING_TOOLS = ['addPatch', 'editRecord', 'moveRecord', 'deleteRecord', 
 export function changedProject(call, projectsDir) {
     const result = call.result ?? '';
     if (FILE_TOOLS.includes(call.name)) {
+        // A call the record has no answer of — the run ended before it answered — counts by the path it names, as the
+        // plugin's tools without an answer count already.
+        if (call.result === undefined) return JSON.stringify(call.args ?? '').toLowerCase().includes(path.basename(projectsDir).toLowerCase());
         return !call.isError && !/^No changes/i.test(result) && result.toLowerCase().includes(path.basename(projectsDir).toLowerCase());
     }
     // deleteRecord sent with `build` deleted the file where its build was refused: "Deleted <file> — … The build after it: …".
@@ -668,8 +672,10 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
             const record = callRecord(toolCall, turn, toolNames);
             const text = results[i];
             if (text !== undefined) {
-                // A failed call reads `[tool error] {"status": "error", "tool": "readrecord", "error": "'record' is required …"}`.
-                record.isError = /^\s*\[tool error\]/.test(text);
+                // A failed call reads `[tool error] {"status": "error", "tool": "readrecord", "error": "'record' is required …"}` —
+                // or, as OpenClaw handed it on in eval round 139, the error's JSON alone: that round counted no failed call, and
+                // its loot #3 passed on a sortPlugins that never ran.
+                record.isError = /^\s*\[tool error\]/.test(text) || /^\s*\{\s*"status"\s*:\s*"error"/.test(text);
                 const code = record.isError && toolNames.has(record.name) ? codes.get(record.name.toLowerCase())?.shift() : undefined;
                 if (code !== undefined) record.code = code;
                 if (record.isError && /Tool \S+ not found|Unknown tool id/i.test(text)) record.unknownTool = true;

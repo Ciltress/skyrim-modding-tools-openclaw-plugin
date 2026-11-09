@@ -289,6 +289,13 @@ describe('builtAfterLastChange', () => {
         expect(builtAfterLastChange([], projects)).toBe(false);
     });
 
+    it('counts the tools that write cells, land and navmeshes, and a file call the run ended on, as changes', () => {
+        for (const name of ['generateNavmesh', 'editTerrain', 'newCell', 'newWorldspace', 'importCell'])
+            expect(builtAfterLastChange([write, build, { name, isError: false, result: '{"status":"success"}' }], projects)).toBe(false);
+        expect(builtAfterLastChange([write, build, { name: 'write', args: { path: file } }], projects)).toBe(false);
+        expect(builtAfterLastChange([write, build, { name: 'write', args: { path: 'C:\\elsewhere\\notes.md' } }], projects)).toBe(true);
+    });
+
     it('leaves a run unbuilt that changed its project after its last build: round 99\'s sword #1', () => {
         const unbuilt = edit({ set: [{ path: 'BasicStats.Weight', value: 7 }] }, '{"status":"success","nextStep":"Run buildProject next"}');
         expect(builtAfterLastChange([write, build, unbuilt], projects)).toBe(false);

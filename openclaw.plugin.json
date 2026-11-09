@@ -258,6 +258,7 @@
       "editTerrain",
       "generateNavmesh",
       "newWorldspace",
+      "newCell",
       "buildProject",
       "deployProject",
       "pullProject",
@@ -316,6 +317,9 @@
       "optional": true
     },
     "newWorldspace": {
+      "optional": true
+    },
+    "newCell": {
       "optional": true
     },
     "buildProject": {

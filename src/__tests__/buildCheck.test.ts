@@ -29,6 +29,25 @@ describe('BuildCheck', () => {
         expect(c.beforeFinalize(agent)).toBeUndefined();
     });
 
+    it('counts a project only made, and the tools that write cells, land and navmeshes, as changes', () => {
+        for (const tool of ['newProject', 'editTerrain', 'generateNavmesh', 'newCell', 'newWorldspace', 'importCell', 'moveRecord']) {
+            const c = check();
+            c.afterToolCall(call(tool, { project: 'ArrivalRumor' }), agent);
+            expect(c.beforeFinalize(agent)?.reason).toBe('Changed and not built since: ArrivalRumor.');
+        }
+    });
+
+    it('takes deleteRecord with build as the build it made, and its refused build as a change', () => {
+        const built = check();
+        built.afterToolCall(call('editRecord', { project: 'AshenCamp', record: 'x' }), agent);
+        built.afterToolCall(call('deleteRecord', { project: 'AshenCamp', record: 'Cells/AshenCamp.yaml', build: true }), agent);
+        expect(built.beforeFinalize(agent)).toBeUndefined();
+        const refused = check();
+        refused.afterToolCall(call('deleteRecord', { project: 'AshenCamp', record: 'Cells/AshenCamp.yaml', build: true },
+            { error: 'Deleted C:/p/AshenCamp/plugin/Cells/AshenCamp.yaml — The build after it: Not built: no records' }), agent);
+        expect(refused.beforeFinalize(agent)?.reason).toBe('Changed and not built since: AshenCamp.');
+    });
+
     it('reads the tool names as OpenClaw sends them to after_tool_call, in lower case', () => {
         const c = check();
         c.afterToolCall(call('addpatch', { project: 'ProbeBuff', records: ['IronSword'] }), agent);

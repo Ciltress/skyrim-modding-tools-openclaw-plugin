@@ -23,17 +23,19 @@ export interface FinalizeRevision {
 
 /**
  * The tools that change a project's text without a file tool, in lower case: OpenClaw's after_tool_call names a tool
- * so (`editrecord`), and with `editRecord` here the check never fired.
+ * so (`editrecord`), and with `editRecord` here the check never fired. A project only made counts too: eval round 139's
+ * storymanager #2 made one and answered with nothing in it, and no build ever told it so.
  */
-const PROJECT_CHANGES = new Set(['addpatch', 'editrecord']);
+const PROJECT_CHANGES = new Set(['addpatch', 'editrecord', 'newproject', 'moverecord', 'deleterecord', 'pullproject', 'editterrain',
+    'generatenavmesh', 'newcell', 'newworldspace', 'importcell']);
 /** The tools whose success means the project's plugin was written from its text. */
 const PROJECT_BUILDS = new Set(['buildproject', 'deployproject']);
 /** OpenClaw's file tools, and where a call names its file. */
 const FILE_TOOLS = new Set(['write', 'edit', 'apply_patch']);
 /** A project's folders the build reads: the plugin as text, and the Papyrus sources. */
 const PROJECT_TEXT = new Set(['plugin', 'scripts']);
-/** editRecord's refusal of the build after its change, the change made. */
-const CHANGED_NOT_BUILT = /\bChanged .+ Not built: /s;
+/** editRecord's and deleteRecord's refusal of the build after their change, the change made. */
+const CHANGED_NOT_BUILT = /\b(?:Changed|Deleted) .+ Not built: /s;
 /** true as the tools read it: sent as a boolean, or as text, as small models send an argument now and then. */
 const asTrue = (value: unknown) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
 
@@ -45,9 +47,9 @@ const MAX_RUNS = 200;
  * does not have the change: 10 of the 13 runs of eval rounds 31–47 that ended on a refused build told the
  * user the mod was built, and round 63's npc #5 answered "built" after an editRecord it never built.
  *
- * Only the agents that mod are followed. A project counts as changed after a call that succeeded: addPatch or
- * editRecord with its name, or a file tool writing into its plugin or scripts folder; it counts as built again after a
- * buildProject, deployProject or editRecord with `build` of it that succeeded. Before the run's answer, a project still changed asks the
+ * Only the agents that mod are followed. A project counts as changed after a call that succeeded: a tool of PROJECT_CHANGES
+ * with its name, or a file tool writing into its plugin or scripts folder; it counts as built again after a
+ * buildProject, deployProject, or editRecord or deleteRecord with `build`, of it, that succeeded. Before the run's answer, a project still changed asks the
  * model, once, to build it. The MCP server's nearest equivalent is its answers' nextStep lines, which say to
  * build next.
  *
@@ -86,7 +88,7 @@ export class BuildCheck {
         const tool = event.toolName.toLowerCase();
         // editRecord sent with `build` builds the project after its change (core v0.1.19, from eval round 75): a build when
         // it succeeded; refused at that build, its message begins "Changed <file>: …" — the change made, not built.
-        const editAndBuild = tool === 'editrecord' && asTrue(event.params?.build);
+        const editAndBuild = (tool === 'editrecord' || tool === 'deleterecord') && asTrue(event.params?.build);
         if (event.error) {
             if (editAndBuild && named && CHANGED_NOT_BUILT.test(event.error)) this.run(runId).set(named.toLowerCase(), named);
             return;

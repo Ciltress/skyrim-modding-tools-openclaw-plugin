@@ -601,10 +601,20 @@ export function coverageTasks(h) {
                 const nodes = h.newRecords('ArrivalRumor', 'storymanagerquestnodes');
                 const named = [];
                 for (const n of nodes) for (const q of h.entriesOf(n.text, 'Quests')) named.push((await h.linkTarget('ArrivalRumor', /\bQuest:[ \t]*([^\s#]+)/.exec(q)?.[1]))?.toLowerCase());
+                // Under a branch or an event node: a quest node holds quests, and the story manager reaches no node under one —
+                // 4 of eval round 144's 5 detailed runs named the game's quest node DA09ChangeLocationSharesEvent as their Parent.
+                const reached = [];
+                for (const n of nodes) {
+                    const parent = await h.linkTarget('ArrivalRumor', linkOf(n.text, 'Parent'));
+                    const own = parent && h.projectRecords('ArrivalRumor').records.find(r => r.formKey?.toLowerCase() === parent.toLowerCase());
+                    const row = parent && !own ? (await h.callServerJson('findRecords', { records: [parent], limit: 1 }).catch(() => undefined))?.records?.[0] : undefined;
+                    if (own ? own.group !== 'storymanagerquestnodes' : row && row.signature !== 'SMQN') reached.push(n);
+                }
                 return {
                     newQuest: quests.length > 0,
                     questNode: nodes.length > 0,
                     nodeNamesIt: quests.some(q => named.includes(q.formKey?.toLowerCase())),
+                    underABranch: reached.length > 0,
                     // The Change Location event's code, as the game's quests started on it have it (DA09ChangeLocation).
                     onChangeLocation: quests.some(q => /^Event:[ \t]*CLOC[ \t]*\r?$/m.test(q.text)),
                     // Each time: the story manager starts a quest only while it is stopped, and never again one that runs once —
@@ -691,7 +701,10 @@ export function coverageTasks(h) {
                 'Blue Mountain Flower plant — its model and harvest sound — that gives the leaf when picked, placed on the ground in ' +
                 'an exterior cell of Riverwood.'),
             async ({ calls }) => {
-                const plant = named('Moonpetal', 'florae', /^moonpetal$/i) ?? h.newRecords('Moonpetal', 'florae')[0];
+                // A Tree with an Ingredient is picked as a flora is: the game's Blue Mountain Flower is one, and eval round 144's
+                // flora+detailed #4 and #5, made like it, wrote a Tree so.
+                const plant = named('Moonpetal', 'florae', /^moonpetal$/i) ?? named('Moonpetal', 'trees', /^moonpetal$/i)
+                    ?? h.newRecords('Moonpetal', 'florae')[0] ?? h.newRecords('Moonpetal', 'trees').find(t => linkOf(t.text, 'Ingredient'));
                 const leaf = named('Moonpetal', 'ingredients', /^moonpetal leaf$/i);
                 const gives = plant && leaf && (await h.linkTarget('Moonpetal', linkOf(plant.text, 'Ingredient')))?.toLowerCase() === leaf.formKey?.toLowerCase();
                 const placed = h.projectRecords('Moonpetal').records.filter(r => r.group === 'worldspaces' && /Riverwood/i.test(r.file) && linkOf(r.text, 'Base'));

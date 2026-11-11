@@ -1,7 +1,7 @@
 import { buildJsonPluginConfigSchema, definePluginEntry, type OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry';
 import { resolveStateDir } from 'openclaw/plugin-sdk/state-paths';
 import { createBackend, readConfiguration, stopBackends } from 'skyrim-modding-tools-core';
-import { BuildCheck, filePaths } from './buildCheck.js';
+import { BuildCheck, endsWithAnswer, filePaths } from './buildCheck.js';
 import { agentInstructions } from './instructions.js';
 import { CONFIG_SCHEMA, PLUGIN_ID, PLUGIN_ROOT, pluginProduct, readSettings } from './settings.js';
 import { registerSetupCommand } from './setupCommand.js';
@@ -97,6 +97,9 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
         return revision;
     });
     api.on('agent_end', (event, context) => {
+        // A turn that ended with no answer gets one from OpenClaw after agent_end, checked above like any other: the
+        // run's state stays for it, and goes at the agent_end after the answer, or when MAX_RUNS newer runs push it out.
+        if (!endsWithAnswer(event.messages)) return;
         check.end(event.runId ?? context.runId);
         guard.end(event.runId ?? context.runId);
     });

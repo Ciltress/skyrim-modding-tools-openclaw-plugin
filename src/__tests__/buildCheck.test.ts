@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BuildCheck, filePaths } from '../buildCheck.js';
+import { BuildCheck, endsWithAnswer, filePaths } from '../buildCheck.js';
 
 /** The check that a modding agent builds what it changed before it answers. */
 
@@ -131,5 +131,17 @@ describe('filePaths', () => {
         expect(filePaths('edit', { edits: [{ path: 'b.yaml', oldText: 'x', newText: 'y' }] })).toEqual(['b.yaml']);
         const patch = '*** Begin Patch\n*** Update File: P/plugin/x.yaml\n@@\n-a\n+b\n*** Add File: P/plugin/y.yaml\n+c\n*** End Patch';
         expect(filePaths('apply_patch', { input: patch })).toEqual(['P/plugin/x.yaml', 'P/plugin/y.yaml']);
+    });
+});
+
+describe('endsWithAnswer', () => {
+    it('takes only an assistant message with text the user sees as an answer', () => {
+        expect(endsWithAnswer([{ role: 'assistant', content: 'Built.' }])).toBe(true);
+        expect(endsWithAnswer([{ role: 'assistant', content: [{ type: 'thinking', thinking: 'x' }, { type: 'text', text: 'Built.' }] }])).toBe(true);
+        expect(endsWithAnswer([{ role: 'assistant', content: [{ type: 'thinking', thinking: 'Built.' }] }])).toBe(false);
+        expect(endsWithAnswer([{ role: 'assistant', content: [{ type: 'text', text: '\n' }] }])).toBe(false);
+        expect(endsWithAnswer([{ role: 'assistant', content: 'Built.' }, { role: 'toolResult', content: 'ok' }])).toBe(false);
+        expect(endsWithAnswer([])).toBe(false);
+        expect(endsWithAnswer(undefined)).toBe(false);
     });
 });

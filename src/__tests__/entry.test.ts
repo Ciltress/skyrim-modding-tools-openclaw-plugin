@@ -71,4 +71,27 @@ describe('the plugin in the gateway', () => {
         expect(prompt('skyrim-e4b')).toEqual({ appendSystemContext: agentInstructions(tools.backend.describe()) });
         expect(prompt('swift')).toBeUndefined();
     });
+
+    it('keeps a run\'s unbuilt project past an agent_end with no answer, for the answer OpenClaw writes after it', () => {
+        const { api, hooks } = entryApi('full', { agents: ['skyrim-e4b'] });
+        registerSkyrimModdingTools(api);
+        const context = { agentId: 'skyrim-e4b', runId: 'run-1' };
+        const finalize = (answer: string) => hooks.get('before_agent_finalize')!({ runId: 'run-1', lastAssistantMessage: answer }, context);
+        hooks.get('after_tool_call')!({ toolName: 'editrecord', params: { project: 'FlameBlade' }, runId: 'run-1' }, context);
+
+        // The turn ended after its call with thinking only: OpenClaw's settled-turn finalization answers next.
+        hooks.get('agent_end')!({ runId: 'run-1', success: true, messages: [
+            { role: 'user', content: 'Make the sword burn.' },
+            { role: 'assistant', content: [{ type: 'toolCall', name: 'editRecord' }] },
+            { role: 'toolResult', content: [{ type: 'text', text: 'Changed Weapons/FlameBlade.yaml.' }] },
+            { role: 'assistant', content: [{ type: 'thinking', thinking: 'Done.' }, { type: 'text', text: ' ' }] }
+        ] }, context);
+        expect(finalize('Built: the sword burns.')).toMatchObject({ action: 'revise', reason: 'Changed and not built since: FlameBlade.' });
+
+        // The answer after it ends the run.
+        hooks.get('agent_end')!({ runId: 'run-1', success: true, messages: [
+            { role: 'assistant', content: [{ type: 'text', text: 'The sword is changed, not built yet.' }] }
+        ] }, context);
+        expect(finalize('The sword is changed, not built yet.')).toBeUndefined();
+    });
 });

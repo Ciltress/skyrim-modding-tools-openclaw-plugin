@@ -43,6 +43,20 @@ const asTrue = (value: unknown) => value === true || (typeof value === 'string' 
 const MAX_RUNS = 200;
 
 /**
+ * Whether agent_end's messages end with an answer the user sees: an assistant message with text, not only thinking or
+ * calls. A turn that ended after its calls with none gets its answer from OpenClaw's settled-turn finalization, which
+ * comes after agent_end and is checked by before_agent_finalize all the same (openclaw/openclaw#196170): the run's
+ * state must still be there then.
+ */
+export function endsWithAnswer(messages: unknown): boolean {
+    const last = Array.isArray(messages) ? messages.at(-1) as { role?: unknown; content?: unknown } | undefined : undefined;
+    if (last?.role !== 'assistant') return false;
+    if (typeof last.content === 'string') return !!last.content.trim();
+    return Array.isArray(last.content) && last.content.some(part =>
+        part?.type === 'text' && typeof part.text === 'string' && !!part.text.trim());
+}
+
+/**
  * Which projects a run changed and did not build since, so that the run is not answered as done while the plugin
  * does not have the change: 10 of the 13 runs of eval rounds 31–47 that ended on a refused build told the
  * user the mod was built, and round 63's npc #5 answered "built" after an editRecord it never built.

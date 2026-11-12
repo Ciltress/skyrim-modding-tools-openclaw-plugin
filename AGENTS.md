@@ -34,7 +34,8 @@ src/
   tools.ts        the core's tools as OpenClaw tools: names, direct-only, sequential, prepareArguments =
                   the core's coerceArgs, the MCP server's rules (profile, budget, gate, one retry, latch),
                   failures thrown as the core's message, the code for OpenClaw's log; healthcheck
-  buildCheck.ts   after_tool_call / before_agent_finalize: a project changed and not built asks for a build
+  buildCheck.ts   after_tool_call / before_agent_finalize: a project changed and not built asks for a build; one
+                  whose last build answered built_with_warnings, for its warnings fixed
   writeGuard.ts   before_tool_call: a write or edit of a record file outside every project's plugin folder goes to its
                   path in the project (the call's params changed), or is stopped where the guard cannot place it;
                   a write over a numbered record file keeps the build's FormKey line

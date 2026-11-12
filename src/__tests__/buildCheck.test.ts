@@ -125,6 +125,47 @@ describe('BuildCheck', () => {
     });
 });
 
+describe('BuildCheck, of a build with warnings', () => {
+    // As OpenClaw hands a plugin tool's answer to after_tool_call: its content's text, the core's JSON.
+    const answered = (status: string) => ({ content: [{ type: 'text', text: JSON.stringify({ status, warnings: status === 'success' ? [] : ['x'] }, null, 2) }] });
+
+    // Eval round 151's leveled-npc #2 and #3 answered after a build whose warning held the call that put the game's Ice Wolf in the list.
+    it('asks once more, after the build check, when the last build of a project answered built_with_warnings', () => {
+        const c = check();
+        c.afterToolCall({ ...call('buildProject', { project: 'IceWolves' }), result: answered('built_with_warnings') }, agent);
+        const revision = c.warningsBeforeFinalize(agent)!;
+        expect(revision.action).toBe('revise');
+        expect(revision.reason).toBe('Built with warnings last: IceWolves.');
+        expect(revision.retry.maxAttempts).toBe(1);
+        expect(revision.retry.instruction).toContain('Fix what each warning says and build again: that is part of the task');
+        expect(revision.retry.instruction).toContain('Leave a warning only where the user asked for just what it names, and say so');
+        expect(revision.retry.idempotencyKey).toBe('skyrim-modding-tools:warnings:run-1:icewolves');
+        // A change after it is the build check's first.
+        c.afterToolCall(call('editRecord', { project: 'IceWolves' }), agent);
+        expect(c.warningsBeforeFinalize(agent)).toBeUndefined();
+        expect(c.beforeFinalize(agent)).toBeDefined();
+    });
+
+    it('takes an editRecord built with warnings, its answer quoted inside JSON too, and lets a clean build clear it', () => {
+        const c = check();
+        c.afterToolCall({ ...call('editRecord', { project: 'GoldLever', build: true }), result: JSON.stringify(answered('built_with_warnings')) }, agent);
+        expect(c.warningsBeforeFinalize(agent)?.reason).toBe('Built with warnings last: GoldLever.');
+        c.afterToolCall({ ...call('buildProject', { project: 'goldlever' }), result: answered('success') }, agent);
+        expect(c.warningsBeforeFinalize(agent)).toBeUndefined();
+    });
+
+    it('asks nothing of another agent, of a refused build, or of a run that ended', () => {
+        const c = check();
+        c.afterToolCall({ ...call('buildProject', { project: 'A' }), result: answered('built_with_warnings') }, { agentId: 'swift', runId: 'run-1' });
+        expect(c.warningsBeforeFinalize({ agentId: 'swift', runId: 'run-1' })).toBeUndefined();
+        c.afterToolCall({ ...call('buildProject', { project: 'A' }), error: 'Not built: …' }, agent);
+        expect(c.warningsBeforeFinalize(agent)).toBeUndefined();
+        c.afterToolCall({ ...call('buildProject', { project: 'A' }), result: answered('built_with_warnings') }, agent);
+        c.end('run-1');
+        expect(c.warningsBeforeFinalize(agent)).toBeUndefined();
+    });
+});
+
 describe('filePaths', () => {
     it('reads write and edit paths, edit lists, and apply_patch headers', () => {
         expect(filePaths('write', { path: 'a.yaml' })).toEqual(['a.yaml']);

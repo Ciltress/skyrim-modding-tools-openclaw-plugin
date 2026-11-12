@@ -93,8 +93,14 @@ export function registerSkyrimModdingTools(api: OpenClawPluginApi): SkyrimTools 
             return announced;
         }
         const revision = check.beforeFinalize(context, event.runId ?? context.runId);
-        if (revision) api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to build before answering — ${revision.reason}`);
-        return revision;
+        if (revision) {
+            api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to build before answering — ${revision.reason}`);
+            return revision;
+        }
+        // Then a project built with warnings last: each is to be fixed, or kept and said.
+        const warned = check.warningsBeforeFinalize(context, event.runId ?? context.runId);
+        if (warned) api.logger.info(`skyrim-modding-tools: ${context.agentId} asked to fix its build's warnings before answering — ${warned.reason}`);
+        return warned;
     });
     api.on('agent_end', (event, context) => {
         // A turn that ended with no answer gets one from OpenClaw after agent_end, checked above like any other: the

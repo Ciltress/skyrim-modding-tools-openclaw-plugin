@@ -37,7 +37,9 @@ It does what an MCP server cannot in OpenClaw:
 - **The skills** ship with the plugin; no `skills.load.extraDirs`.
 - **A build check:** an agent that changed a project and did not build it is asked once more before it answers.
   OpenClaw makes that pass only in a run whose calls it could replay — its own read-only tools — so after a plugin
-  tool's call or a write it logs the request instead; the tools' own answers say to build next as well.
+  tool's call or a write it logs the request instead; the tools' own answers say to build next as well. A project whose
+  last build answered `built_with_warnings` is asked for once the same way: fix what each warning says and build again,
+  or say why one stays.
 - **A write guard:** an agent's write or edit of a record file that would land in the projects folder outside every
   project's plugin folder, where no build reads it, goes to the file's path in its project instead, and the answer
   names that path. Where the project or the group folder cannot be told, it is stopped, with where the file goes. A

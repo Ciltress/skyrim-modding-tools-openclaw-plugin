@@ -749,6 +749,8 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
             textCallAsked: (log.match(/asked to make the call it wrote as text/g) ?? []).length,
             // And its announced-step check: an answer that said what it was about to do, in a run with no call, asked to do it.
             announcedAsked: (log.match(/asked to take the step it announced/g) ?? []).length,
+            // And its warnings check: a project whose last build answered built_with_warnings, asked to fix them or say why not.
+            warningsAsked: (log.match(/asked to fix its build's warnings before answering/g) ?? []).length,
             toolSummary: envelope?.toolSummary ?? null,
             ...(stop.startsWith('clientError') ? { error: envelope?.error ?? null } : {}),
             stderr: log.split('\n')

@@ -6,6 +6,8 @@ export interface ToolCallFact {
     params: Record<string, unknown>;
     runId?: string;
     error?: string;
+    /** What the tool answered: a build's status is read from it. */
+    result?: unknown;
 }
 
 /** What of an agent hook's context the check reads. */
@@ -36,6 +38,8 @@ const FILE_TOOLS = new Set(['write', 'edit', 'apply_patch']);
 const PROJECT_TEXT = new Set(['plugin', 'scripts']);
 /** editRecord's and deleteRecord's refusal of the build after their change, the change made. */
 const CHANGED_NOT_BUILT = /\b(?:Changed|Deleted) .+ Not built: /s;
+/** A build that wrote the plugin with warnings, in the tool's answer as it comes — its JSON text, or that text quoted inside JSON. */
+const BUILT_WITH_WARNINGS = /\\?"status\\?"\s*:\s*\\?"built_with_warnings\\?"/;
 /** true as the tools read it: sent as a boolean, or as text, as small models send an argument now and then. */
 const asTrue = (value: unknown) => value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
 
@@ -75,6 +79,12 @@ export function endsWithAnswer(messages: unknown): boolean {
  */
 export class BuildCheck {
     private readonly runs = new Map<string, Map<string, string>>();
+    /**
+     * The projects whose last build answered built_with_warnings. A warning names what the plugin does not do as asked, with the
+     * call that fixes it, and the core says fixing it is part of the task; still 3 of eval round 151's 14 failed runs answered
+     * after such a build — leveled-npc #2 and #3 with the call that puts the game's Ice Wolf in LCharWolf in front of them.
+     */
+    private readonly warned = new Map<string, Map<string, string>>();
     /** The runs that made a call of any tool, failed or not. */
     private readonly calling = new Set<string>();
 
@@ -108,7 +118,10 @@ export class BuildCheck {
             return;
         }
         if (PROJECT_BUILDS.has(tool) || editAndBuild) {
-            if (named) this.runs.get(runId)?.delete(named.toLowerCase());
+            if (!named) return;
+            this.runs.get(runId)?.delete(named.toLowerCase());
+            if (BUILT_WITH_WARNINGS.test(resultText(event.result))) this.run(runId, this.warned).set(named.toLowerCase(), named);
+            else this.warned.get(runId)?.delete(named.toLowerCase());
             return;
         }
         const changed = PROJECT_CHANGES.has(tool) ? (named ? [named] : [])
@@ -141,6 +154,30 @@ export class BuildCheck {
         };
     }
 
+    /**
+     * before_agent_finalize, after the build check: one more pass while a project's last build answered built_with_warnings —
+     * each warning is to be fixed, or kept and said, where the user asked for just what it names.
+     */
+    warningsBeforeFinalize(context: RunFact, runId = context.runId): FinalizeRevision | undefined {
+        if (!this.applies(context.agentId) || !runId || this.runs.get(runId)?.size) return undefined;
+        const warned = [...(this.warned.get(runId)?.values() ?? [])];
+        if (!warned.length) return undefined;
+        const names = warned.join(', ');
+        return {
+            action: 'revise',
+            reason: `Built with warnings last: ${names}.`,
+            retry: {
+                instruction:
+                    `Before you answer: the last build of ${warned.length === 1 ? `${names}` : `each of ${names}`} answered ` +
+                    'built_with_warnings — the plugin is built, and each warning names what in it does not do what was asked, with the call ' +
+                    'that fixes it. Fix what each warning says and build again: that is part of the task. Leave a warning only where the ' +
+                    'user asked for just what it names, and say so in your answer.',
+                idempotencyKey: `skyrim-modding-tools:warnings:${runId}:${warned.map(p => p.toLowerCase()).sort().join(',')}`,
+                maxAttempts: 1
+            }
+        };
+    }
+
     /** Whether the run made a call of any tool so far — after which OpenClaw makes no finalize pass, if it could not replay it. */
     madeCalls(runId: string | undefined): boolean {
         return !!runId && this.calling.has(runId);
@@ -150,14 +187,15 @@ export class BuildCheck {
     end(runId: string | undefined): void {
         if (!runId) return;
         this.runs.delete(runId);
+        this.warned.delete(runId);
         this.calling.delete(runId);
     }
 
-    private run(runId: string): Map<string, string> {
-        let run = this.runs.get(runId);
+    private run(runId: string, of = this.runs): Map<string, string> {
+        let run = of.get(runId);
         if (!run) {
-            if (this.runs.size >= MAX_RUNS) this.runs.delete(this.runs.keys().next().value!);
-            this.runs.set(runId, run = new Map());
+            if (of.size >= MAX_RUNS) of.delete(of.keys().next().value!);
+            of.set(runId, run = new Map());
         }
         return run;
     }
@@ -178,6 +216,14 @@ export class BuildCheck {
         }
         return [...projects];
     }
+}
+
+/** A tool's answer as text: as it is, its content's text parts, or its JSON. */
+export function resultText(result: unknown): string {
+    if (typeof result === 'string') return result;
+    const content = (result as { content?: unknown } | null | undefined)?.content;
+    if (Array.isArray(content)) return content.map(part => typeof part?.text === 'string' ? part.text : '').join('\n');
+    try { return JSON.stringify(result) ?? ''; } catch { return ''; }
 }
 
 /** The files a call of OpenClaw's write, edit or apply_patch names. */

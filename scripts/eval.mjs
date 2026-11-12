@@ -2376,6 +2376,7 @@ const openClawSummary = (() => {
         buildCheckDropped: sum('buildCheckDropped'),
         textCallAsked: results.filter(r => r.client?.textCallAsked > 0).length,
         announcedAsked: results.filter(r => r.client?.announcedAsked > 0).length,
+        warningsAsked: results.filter(r => r.client?.warningsAsked > 0).length,
         phases: meanPhases(results)
     };
 })();
@@ -2452,7 +2453,7 @@ const entry = [
     `${openClawSummary.cutAnswers} answers cut off, ${openClawSummary.lengthStops} turns ended at the length limit, ` +
     `${openClawSummary.sideRequests} side requests; the build check asked for a build in ${openClawSummary.buildCheckAsked} ` +
     `runs, the text-call check asked for a call in ${openClawSummary.textCallAsked}, the announced-step check for its step ` +
-    `in ${openClawSummary.announcedAsked}, and OpenClaw dropped ` +
+    `in ${openClawSummary.announcedAsked}, the warnings check for a fix in ${openClawSummary.warningsAsked ?? 0}, and OpenClaw dropped ` +
     `${openClawSummary.buildCheckDropped} of those passes. Outside the turns a run took on average ` +
     `${PHASES.map(([key, name]) => `${openClawSummary.phases[key] ?? '?'} s ${name}`).join(', ')}.` +
     (notesWritten.length ? ` Of the ${notesWritten.length} notes written, ${notesWritten.filter(r => r.facts.emptyLinesKept).length} ` +

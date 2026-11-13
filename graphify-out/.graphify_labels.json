@@ -1,17 +1,1 @@
-{
-  "0": "eval.mjs",
-  "2": "setup.ts",
-  "4": "Package Manifest (4)",
-  "5": "with",
-  "7": "stage-clawhub.mjs (7)",
-  "8": "projectRecords",
-  "11": "package.json",
-  "16": "Helper NuGet libraries table",
-  "17": "Package Manifest (17)",
-  "19": "blockOf",
-  "20": "filesUnder",
-  "29": "fail",
-  "30": "ollama",
-  "34": "npcTraits",
-  "36": "Eval proxy before Ollama"
-}
+{"0": "eval.mjs", "1": "setup.ts", "2": "setup.ts", "3": "with", "4": "Package Manifest (4)", "5": "with", "6": "ci.yml", "7": "stage-clawhub.mjs (7)", "8": "projectRecords", "9": "registerSkyrimModdingTools", "10": "AGENTS.md (guidance for agents on the plugin repo)", "11": "package.json", "12": "eval-openclaw.mjs", "13": "textCalls.ts", "14": "copy-skills.mjs", "15": "compilerOptions", "16": "Helper NuGet libraries table", "17": "Package Manifest (17)", "18": "Plugin helper (SkyrimHelper.exe, core's .NET helper)", "19": "blockOf", "20": "filesUnder", "21": "eval-openclaw.test.mjs", "22": "blockOf", "23": "Local-model eval (npm run eval)", "24": "link-openclaw.mjs", "25": "Releasing on ClawHub", "26": "filesUnder", "27": "eval-yaml.mjs", "28": "startProxy", "29": "fail", "30": "ollama", "31": "fail", "32": "builtAfterLastChange", "33": "ollama", "34": "npcTraits", "35": "npcTraits"}

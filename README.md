@@ -122,12 +122,15 @@ Needs OpenClaw 2026.10.7 or later (on Node.js 24.22.1) and the .NET 10 SDK for t
 ```bash
 git clone https://github.com/Ciltress/skyrim-modding-tools-openclaw-plugin
 cd skyrim-modding-tools-openclaw-plugin
-npm install
+npm install --allow-git=all
 npm run build
 npm run build:helper
 openclaw plugins install -l .
 openclaw skyrim setup
 ```
+
+`--allow-git=all` lets npm 12 fetch the core, a dependency from a git repository, which it no longer does by default;
+older npm needs none.
 
 ### Settings
 
@@ -176,7 +179,7 @@ of the plugin leaves alone.
 ## Development
 
 ```bash
-npm install            # links the installed OpenClaw for its SDK's types
+npm install --allow-git=all   # links the installed OpenClaw for its SDK's types
 npm run build          # tsc -> dist/, and the core's skills into skills/
 npm test
 npm run manifest       # after a tool changed in the core: rewrite openclaw.plugin.json

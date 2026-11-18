@@ -81,12 +81,12 @@ THIRD_PARTY_NOTICES.md  the helper's libraries and their licenses; stage-clawhub
 ## Working on this repo
 
 ```bash
-npm install && npm run build && npm test
+npm install --allow-git=all && npm run build && npm test
 npm run build:helper && npm run check:helper
 openclaw plugins reload skyrim-modding-tools --accept-capabilities
 ```
 
-A new core release: `npm install "skyrim-modding-tools-core@git+https://github.com/Ciltress/skyrim-modding-tools-core.git#vX.Y.Z"`,
+A new core release: `npm install --allow-git=all "skyrim-modding-tools-core@git+https://github.com/Ciltress/skyrim-modding-tools-core.git#vX.Y.Z"`,
 `npm approve-scripts skyrim-modding-tools-core`, drop the old pin from `allowScripts`, build, rebuild the helper.
 If the helper's NuGet packages changed, name them in THIRD_PARTY_NOTICES.md, or the ClawHub release refuses them.
 

@@ -616,7 +616,8 @@ export function coverageTasks(h) {
                     nodeNamesIt: quests.some(q => named.includes(q.formKey?.toLowerCase())),
                     underABranch: reached.length > 0,
                     // The Change Location event's code, as the game's quests started on it have it (DA09ChangeLocation).
-                    onChangeLocation: quests.some(q => /^Event:[ \t]*CLOC[ \t]*\r?$/m.test(q.text)),
+                    // A comment after it is the file's own: eval round 163's storymanager #2 wrote `Event: CLOC # ChangeLocation`, built CLOC.
+                    onChangeLocation: quests.some(q => /^Event:[ \t]*CLOC[ \t]*(?:#[^\r\n]*)?\r?$/m.test(q.text)),
                     // Each time: the story manager starts a quest only while it is stopped, and never again one that runs once —
                     // eval round 139's storymanager #3 passed with a quest that showed its message once and ran on.
                     startsAgain: quests.some(q => !h.listOf(q.text, 'Flags').some(f => /RunOnce/i.test(f)))

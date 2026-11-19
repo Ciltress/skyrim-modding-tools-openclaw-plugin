@@ -274,8 +274,9 @@ describe('failureCodes', () => {
 });
 
 describe('builtAfterLastChange', () => {
-    const projects = 'C:\\Temp\\skyrim-eval-projects-5O57r5';
-    const file = `${projects}\\FlameBlade\\plugin\\Weapons\\FlameBlade.yaml`;
+    // This system's paths: the code takes the folder's name with path.basename, which splits a Windows path only on Windows.
+    const projects = path.join(os.tmpdir(), 'skyrim-eval-projects-5O57r5');
+    const file = path.join(projects, 'FlameBlade', 'plugin', 'Weapons', 'FlameBlade.yaml');
     const write = { name: 'write', args: { path: 'Weapons/FlameBlade.yaml' }, isError: false, result: `Successfully wrote 1074 bytes to ${file}` };
     const build = { name: 'buildProject', args: { project: 'FlameBlade' }, isError: false, result: '{"status":"built_with_warnings"}' };
     const refused = { name: 'buildProject', args: { project: 'FlameBlade' }, isError: true, result: '[tool error] {"error": "Not built: …"}' };

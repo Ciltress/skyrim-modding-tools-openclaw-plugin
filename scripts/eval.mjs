@@ -85,7 +85,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { collectToolFamilies, createBackend, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
+import { collectToolFamilies, createBackend, readConfiguration, renderToolReference, stopBackends } from 'skyrim-modding-tools-core';
 import {
     builtAfterLastChange, dealtDamage, firstPersonModelOf, levelFollowsPlayer, modelOf, NOT_ALLOWED, openClawConfigFile, openClawEntry, openClawVersion,
     overridesIn, providerServer, runOpenClaw, startProxy, writeSessionConfig
@@ -1939,11 +1939,10 @@ TASKS.push(...coverageTasks({
  */
 function lootTask() {
     let saved = [];
+    // The selected profile's folder as the tools read it, for Mod Organizer and Amethyst alike.
     const listFiles = () => {
-        const dir = settings.env.SKYRIM_MO2_INSTANCE;
-        if (!dir || !fs.existsSync(path.join(dir, 'ModOrganizer.ini'))) return [];
-        const profile = /^selected_profile=(?:@ByteArray\()?([^)\r\n]+)\)?/m.exec(fs.readFileSync(path.join(dir, 'ModOrganizer.ini'), 'latin1'))?.[1] ?? 'Default';
-        return ['plugins.txt', 'loadorder.txt'].map(file => path.join(dir, 'profiles', profile, file)).filter(file => fs.existsSync(file));
+        const { profileDir } = readConfiguration(settings.env, { root }).modManager.readInstance();
+        return ['plugins.txt', 'loadorder.txt'].map(file => path.join(profileDir, file)).filter(file => fs.existsSync(file));
     };
     return {
         id: 'loot',

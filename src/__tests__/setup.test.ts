@@ -72,6 +72,7 @@ function setup(config: Config = {}) {
         stateDir: path.join(root, '.openclaw'),
         projectsDir: path.join(root, '.openclaw', 'skyrim-modding-tools', 'projects'),
         platform: 'win32',
+        home: root,
         ollamaModels: async () => ['small:4b', 'bigger:12b']
     };
     return { root, instancesDir: path.join(local, 'ModOrganizer'), context };
@@ -138,6 +139,20 @@ describe('setting the tools up', () => {
         expect(choices.instance).toBe(portable);
         expect(draft.agents).toEqual(context.config.agents);
         expect(draft.plugins.entries['skyrim-modding-tools'].config).toEqual({ mo2Instance: portable });
+    });
+
+    it('asks for no instance where Amethyst has Skyrim set up, and says so', async () => {
+        const { root, context } = setup();
+        const game = path.join(root, '.config', 'AmethystModManager', 'games', 'Skyrim Special Edition');
+        fs.mkdirSync(game, { recursive: true });
+        fs.writeFileSync(path.join(game, 'paths.json'), '{}');
+        const { prompter, notes } = scripted([
+            [/Nexus Mods API key/, ''],
+            [/Set up Muddy/, false]
+        ]);
+        const { choices } = await run(context, prompter);
+        expect(notes.some(note => /Amethyst has Skyrim Special Edition set up/.test(note))).toBe(true);
+        expect(choices.instance).toBeUndefined();
     });
 
     it('keeps an instance and a key already set without asking for them again', async () => {

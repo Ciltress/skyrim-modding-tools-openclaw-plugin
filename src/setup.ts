@@ -32,6 +32,8 @@ export interface SetupContext {
     /** The projects folder: Muddy's working folder. */
     projectsDir: string;
     platform: NodeJS.Platform;
+    /** The home folder, where Amethyst's settings are looked for: os.homedir() unless a test lays one out. */
+    home?: string;
     /** The models Ollama has installed, by name; none when it does not answer. */
     ollamaModels(): Promise<string[]>;
 }
@@ -141,7 +143,7 @@ export function defaultsPrompter(say: (text: string) => void = console.log): Wiz
 
 /** The Mod Organizer instance, where the tools cannot find one by themselves: one found, or a folder pasted. */
 async function askInstance(prompter: WizardPrompter, context: SetupContext, flags: SetupFlags): Promise<string | undefined> {
-    const check = (typed: string) => checkMo2Instance(typed, context.env, { root: context.root });
+    const check = (typed: string) => checkMo2Instance(typed, context.env, { root: context.root, home: context.home });
     if (flags.instance) {
         const checked = check(flags.instance);
         if ('error' in checked) throw new Error(checked.error);
@@ -149,7 +151,7 @@ async function askInstance(prompter: WizardPrompter, context: SetupContext, flag
     }
     const current = context.settingsEnv.SKYRIM_MO2_INSTANCE;
     if (current && await prompter.confirm({ message: `Keep the Mod Organizer instance ${current}?`, initialValue: true })) return undefined;
-    if (!current && chooseModManager(context.settingsEnv).name === 'amethyst') {
+    if (!current && chooseModManager(context.settingsEnv, context.home).name === 'amethyst') {
         await prompter.note('Amethyst has Skyrim Special Edition set up: the tools use it.', 'Mod manager');
         return undefined;
     }

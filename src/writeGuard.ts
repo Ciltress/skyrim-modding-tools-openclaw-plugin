@@ -29,6 +29,29 @@ const WRITES = new Set(['write', 'edit']);
 /** At most this many runs are followed at once; the oldest is dropped first. A run normally ends long before. */
 const MAX_RUNS = 200;
 
+/** The fields a record file's text sets at its margin: `Flags`, `Description`, `VirtualMachineAdapter`. */
+function marginKeys(text: string): Set<string> {
+    return new Set([...text.matchAll(/^([A-Za-z_][\w.]*)[ \t]*:/gm)].map(m => m[1]));
+}
+
+/**
+ * An edit's new text with the fields its old text holds kept, where the edit would replace fields with other ones: an
+ * old text that sets fields at the margin, a new text that sets others and none of those. A model adding a field this
+ * way gave the file's last lines as the old text and the new field alone as the new: eval round 175's message #5 took
+ * out its message's `Flags: - MessageBox` with the Description it added, round 176's message+detailed #1 its OK button
+ * too, and message+detailed #4 its quest's `Flags: - StartGameEnabled` with the script it attached — each box a
+ * notification, the quest never started, and each build a success. Undefined for any other edit: one that changes a
+ * field names it in both texts.
+ */
+export function keptFields(oldText: unknown, newText: unknown): string | undefined {
+    if (typeof oldText !== 'string' || typeof newText !== 'string' || !oldText.trim() || !newText.trim() || newText.includes(oldText.trim())) return undefined;
+    const before = marginKeys(oldText);
+    const after = marginKeys(newText);
+    if (before.size === 0 || after.size === 0 || [...before].some(key => after.has(key))) return undefined;
+    const eol = oldText.includes('\r\n') || newText.includes('\r\n') ? '\r\n' : '\n';
+    return `${oldText.replace(/\s+$/, '')}${eol}${newText.replace(/^\s*\n/, '')}`;
+}
+
 /**
  * Keeps a modding agent's write or edit of a record file from landing in the projects folder outside every project's
  * plugin folder, where no build reads it. Such a file is written into its project, at its group folder and name there,
@@ -48,7 +71,8 @@ const MAX_RUNS = 200;
  * file with its moveRecord call there.
  *
  * A write over a record file a build numbered keeps the FormKey line the build gave it, where the content leaves it out
- * (keptFormKey). A script's source written in the projects folder outside its project's scripts folder goes there
+ * (keptFormKey). An edit of a record file that would replace fields at its margin with other fields keeps them, the new ones
+ * after (keptFields). A script's source written in the projects folder outside its project's scripts folder goes there
  * (placeScript).
  */
 export class WriteGuard {
@@ -100,6 +124,17 @@ export class WriteGuard {
         if (tool === 'write' && typeof written === 'string' && typeof params.content === 'string') {
             const kept = this.keptFormKey(path.resolve(this.projectsDir, written.trim()), params.content);
             if (kept !== undefined) changed.content = kept;
+        }
+        if (tool === 'edit' && Array.isArray(changed.edits ?? params.edits)) {
+            const edits = (changed.edits ?? params.edits) as unknown[];
+            const kept = edits.map(edit => {
+                const fields = edit as Record<string, unknown> | undefined;
+                const file = typeof fields?.path === 'string' ? fields.path : written;
+                if (typeof file !== 'string' || !this.inPluginFolder(path.resolve(this.projectsDir, file.trim()))) return edit;
+                const newText = keptFields(fields?.oldText, fields?.newText);
+                return newText === undefined ? edit : { ...fields, newText };
+            });
+            if (kept.some((edit, i) => edit !== edits[i])) changed.edits = kept;
         }
         return Object.keys(changed).length ? { params: changed } : undefined;
     }
@@ -206,6 +241,12 @@ export class WriteGuard {
         const target = path.join(this.projectsDir, project, 'scripts', name);
         if (tool === 'write' || fs.existsSync(target)) return { target };
         return { reason: `Not edited: ${said} The project has no script at ${slashed(target)}: write it there.` };
+    }
+
+    /** Whether a file is a record file of a project's plugin folder. */
+    private inPluginFolder(file: string): boolean {
+        const [project, folder, ...rest] = path.relative(this.projectsDir, file).split(/[\\/]/);
+        return !!project && rest.length > 0 && folder?.toLowerCase() === 'plugin' && /\.ya?ml$/i.test(file) && this.isProject(project);
     }
 
     private isProject(folder: string): boolean {

@@ -167,6 +167,32 @@ describe('WriteGuard', () => {
         ] } });
     });
 
+    it('keeps the fields an edit of a record file would replace with other fields, and leaves a change of a field alone', () => {
+        // Eval rounds 175 and 176: adding a Description or a script, the model gave the file's last lines as the old text and
+        // the new field alone as the new, and its message box lost `Flags: - MessageBox`, its quest `StartGameEnabled`.
+        project('WelcomeMessage');
+        put('WelcomeMessage/plugin/Messages/WelcomeMessage.yaml');
+        put('WelcomeMessage/scripts/WelcomeScript.psc');
+        const g = guard();
+        g.afterToolCall(call('newProject', { project: 'WelcomeMessage' }), agent);
+        const file = path.join(projects, 'WelcomeMessage', 'plugin', 'Messages', 'WelcomeMessage.yaml');
+        const description = 'Description:\n  TargetLanguage: English\n  Value: Welcome to Skyrim, traveler!';
+        expect(g.beforeToolCall(call('edit', { path: file, edits: [{ oldText: 'Flags:\n- MessageBox\n', newText: description }] }), agent))
+            .toEqual({ params: { edits: [{ oldText: 'Flags:\n- MessageBox\n', newText: `Flags:\n- MessageBox\n${description}` }] } });
+        // By the project's relative path, an edit of its own path too.
+        expect(g.beforeToolCall(call('edit', { edits: [{ path: 'WelcomeMessage/plugin/Messages/WelcomeMessage.yaml',
+            oldText: 'Flags:\n- MessageBox\nMenuButtons:\n- Text: OK', newText: description }] }), agent))
+            .toEqual({ params: { edits: [{ path: 'WelcomeMessage/plugin/Messages/WelcomeMessage.yaml',
+                oldText: 'Flags:\n- MessageBox\nMenuButtons:\n- Text: OK', newText: `Flags:\n- MessageBox\nMenuButtons:\n- Text: OK\n${description}` }] } });
+        // A field changed, a line below the margin changed, a text that keeps the old one, and a script: as sent.
+        for (const edit of [{ oldText: 'Flags:\n- MessageBox', newText: 'Flags: []' }, { oldText: '  Value: OK', newText: '  Value: Okay' },
+            { oldText: 'Flags:\n- MessageBox', newText: `Flags:\n- MessageBox\n${description}` }]) {
+            expect(g.beforeToolCall(call('edit', { path: file, edits: [edit] }), agent)).toBeUndefined();
+        }
+        expect(g.beforeToolCall(call('edit', { path: path.join(projects, 'WelcomeMessage', 'scripts', 'WelcomeScript.psc'),
+            edits: [{ oldText: 'Event OnInit()', newText: 'Function Go()' }] }), agent)).toBeUndefined();
+    });
+
     it('takes the project from calls that succeeded, and forgets it when the run ends', () => {
         project('MavenNote');
         const g = guard();

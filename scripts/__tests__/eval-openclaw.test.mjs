@@ -180,6 +180,23 @@ describe('writeSessionConfig', () => {
         expect(all.plugins).toBeUndefined();
         expect(all.written.plugins.allow).toEqual(['skyrim-modding-tools', 'ollama', 'comfy']);
     });
+
+    it('leaves out the settings of the plugins a run does not load: a slot they hold, the allow entries naming them', () => {
+        // lossless-claw (2026-11-20) set the context-engine slot to itself; the agents' allow lists named it, diffs and lobster.
+        const withPlugins = (config) => {
+            config.plugins.slots = { contextEngine: 'lossless-claw', memory: 'memory-core' };
+            for (const id of ['lossless-claw', 'diffs', 'lobster']) config.plugins.entries[id] = { enabled: true };
+            config.agents.entries['skyrim-e4b'].tools.allow.push('diffs', 'lobster', 'lossless-claw');
+            config.agents.entries.swift.tools = { alsoAllow: ['lobster'], deny: ['exec'] };
+            return config;
+        };
+        const run = session(userConfig(withPlugins), { agent: 'skyrim-e4b' });
+        expect(run.written.plugins.slots).toEqual({ memory: 'memory-core' });
+        expect(run.written.agents.entries['skyrim-e4b'].tools.allow).toEqual(['read', 'write', 'skyrim-modding-tools']);
+        const all = session(userConfig(withPlugins), { agent: 'skyrim-e4b', allPlugins: true });
+        expect(all.written.plugins.slots).toEqual({ contextEngine: 'lossless-claw', memory: 'memory-core' });
+        expect(all.written.agents.entries['skyrim-e4b'].tools.allow).toContain('lossless-claw');
+    });
 });
 
 describe('providerServer', () => {

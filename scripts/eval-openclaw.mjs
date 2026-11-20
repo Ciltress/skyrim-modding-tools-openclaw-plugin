@@ -393,6 +393,19 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     const plugins = allPlugins ? undefined
         : [...new Set([PLUGIN_ID, provider.api === 'ollama' ? 'ollama' : /^openai/.test(provider.api ?? '') ? 'openai' : providerId])];
     if (plugins) config.plugins.allow = plugins;
+    // The user's plugins a run leaves out take their settings with them: lossless-claw, installed on 2026-11-20, set
+    // plugins.slots.contextEngine to itself, an engine no run loads, and the agents' allow lists named it, diffs and lobster.
+    // A slot naming such a plugin is left to its default, and an allow entry naming one dropped, so a run measures what the
+    // rounds before it did.
+    if (plugins) {
+        const left = new Set(Object.keys(config.plugins.entries ?? {}).filter(id => !plugins.includes(id)));
+        for (const [slot, id] of Object.entries(config.plugins.slots ?? {})) if (left.has(id)) delete config.plugins.slots[slot];
+        for (const kept of Object.values(config.agents?.entries ?? {})) {
+            for (const key of ['allow', 'alsoAllow']) {
+                if (Array.isArray(kept.tools?.[key])) kept.tools[key] = kept.tools[key].filter(name => !left.has(name));
+            }
+        }
+    }
 
     config.tools ??= {};
     config.tools.deny = [...new Set([...(config.tools.deny ?? []), ...DENIED_TOOLS, ...NOT_ALLOWED])];

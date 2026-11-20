@@ -124,7 +124,9 @@ what the tools or their answers could do better. `agent exec` loads plugins in r
 and hooks run, the service does not; the helper ends with the run) and takes the `coding` tool profile where the
 config sets none, which hides every native plugin tool — the session config sets `full`, what an unset profile is
 in the gateway. A run loads this plugin and its model's provider's alone (`plugins.allow`), which cut OpenClaw's
-start by a third; `--all-plugins` loads every plugin of the config, as the gateway does. The config copy holds the
+start by a third; `--all-plugins` loads every plugin of the config, as the gateway does, and `--plugins <id,id>` the ones it
+names besides, with their settings (a context-engine slot, the agents' allow entries); the others' are left out, and a
+run keeps lossless-claw's database in its own state folder (`LCM_DATABASE_PATH`). The config copy holds the
 Nexus key: it lives in a temp folder of its own, deleted at the end.
 
 ## Care with a real backend

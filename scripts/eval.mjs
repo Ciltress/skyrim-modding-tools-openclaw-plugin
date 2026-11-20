@@ -10,13 +10,14 @@
  *                         [--authoring-runs 5] [--tasks find,read] [--max-turns 25] [--think true|false|<level>]
  *                         [--detailed] [--out <file>] [--ollama http://localhost:11434] [--settle 60]
  *                         [--provider ollama|<provider>] [--openclaw <openclaw.mjs>] [--openclaw-config <openclaw.json>]
- *                         [--all-plugins] [--blender] [--group coverage]
+ *                         [--all-plugins | --plugins <id,id>] [--blender] [--group coverage]
  *
  * The agent is --openclaw-agent, else the plugin's only modding agent, else the configuration's only agent.
  * --group coverage runs the coverage tasks (scripts/eval-coverage.mjs: every other kind of record a mod makes, the
  * navmesh among them) and the LOOT task instead of the main set; --tasks names any task of either.
  * A run loads this plugin and its provider's alone (`plugins.allow`): with all of the configuration's, OpenClaw's start
- * was 119 of round 128's 231 minutes. --all-plugins loads every plugin the configuration has, as the user's gateway does.
+ * was 119 of round 128's 231 minutes. --all-plugins loads every plugin the configuration has, as the user's gateway does;
+ * --plugins loads the ones it names besides, with their settings (a context-engine slot, the agents' allow entries).
  * --provider names the model's provider in OpenClaw's configuration: `ollama` (the default) is Ollama at --ollama;
  * another is a server with OpenAI's API, an `openai-completions` provider (--provider <its id> --model <the model id
  * it serves>), proxied at its baseUrl. Such a server holds its context and model itself: the warm-up
@@ -114,6 +115,7 @@ const { values: opt } = parseArgs({
         'openclaw-config': { type: 'string' },
         'openclaw-agent': { type: 'string' },
         'all-plugins': { type: 'boolean', default: false },
+        plugins: { type: 'string' },
         blender: { type: 'boolean', default: false },
         check: { type: 'string' }
     }
@@ -241,6 +243,7 @@ const openClaw = await (async () => {
         session = writeSessionConfig({
             dir, configFile, proxyUrl: proxy.baseUrl, provider: opt.provider, model: opt.model, root, projectsDir, crashLogDir, papyrusLogDir,
             agent: opt['openclaw-agent'], profile: opt.profile, allPlugins: opt['all-plugins'],
+            plugins: (opt.plugins ?? '').split(',').map(id => id.trim()).filter(Boolean),
             blender: opt.blender || (opt.tasks ?? '').split(',').some(id => id.trim() === 'blender')
         });
     } catch (error) {
@@ -300,11 +303,15 @@ const BUILD = measuredBuild();
 console.log(`eval: ${opt.model} @ num_ctx ${CTX ?? 'Ollama default'}, profile ${opt.profile}, ${RUNS} run(s) per task` +
     (AUTHORING_RUNS === RUNS ? '' : `, ${AUTHORING_RUNS} per authoring task`) + `, build ${BUILD}, ` +
     (OPENAI ? `${SERVER_NAME} at ${SERVER.url}` : `Ollama ${ollamaVersion ?? '?'}`));
+/** Names as a sentence lists them: `a and b`, `a, b and c`. */
+function listed(names) {
+    return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
 console.log(`eval: through ${openClaw.version} (${openClaw.entry}), on the configuration ${openClaw.configFile}` +
     `${openClaw.agentId ? `, agent '${openClaw.agentId}'` : ''}` +
     `${openClaw.workspaceFiles.length ? ` with ${openClaw.workspaceFiles.map(f => f.name).join(', ')}` : ''}` +
     (openClaw.copiedFrom ? ` — ${opt.model} with the settings of its entry for ${openClaw.copiedFrom}` : '') +
-    `, ${openClaw.plugins ? `the plugins ${openClaw.plugins.join(' and ')} alone` : 'all its plugins'}`);
+    `, ${openClaw.plugins ? `the plugins ${listed(openClaw.plugins)} alone` : 'all its plugins'}`);
 console.log('eval: reading the ground truth from the instance (the first lookup builds the index)…');
 const truth = {
     ironSword: await weapon('IronSword'),
@@ -2443,7 +2450,7 @@ const entry = [
     `| ${report.when.slice(0, 10)} | ${report.model} | ${setup} | ${report.build} | ${passed}/${results.length} | ` +
     `${report.secondsPerTurn ?? '?'} s | ${rate(speed?.promptPerSecond)} | ${rate(speed?.generationPerSecond)} | ${onGpu} |`,
     '',
-    `Through ${openClawSummary.version}${openClaw.plugins ? ` with the plugins ${openClaw.plugins.join(' and ')} alone` : ' with all its plugins'}: ` +
+    `Through ${openClawSummary.version}${openClaw.plugins ? ` with the plugins ${listed(openClaw.plugins)} alone` : ' with all its plugins'}: ` +
     `first prompt ${openClawSummary.firstPromptTokens} tokens (${openClawTools}), ` +
     `the plugin's instructions in ${results.length - openClawSummary.instructionsMissing} of ${results.length} prompts, ` +
     `think ${report.think}, num_ctx ${report.numCtx}, num_predict ${first?.numPredict ?? 'none'}, ` +

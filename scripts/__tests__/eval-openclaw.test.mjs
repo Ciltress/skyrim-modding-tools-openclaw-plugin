@@ -196,6 +196,15 @@ describe('writeSessionConfig', () => {
         const all = session(userConfig(withPlugins), { agent: 'skyrim-e4b', allPlugins: true });
         expect(all.written.plugins.slots).toEqual({ contextEngine: 'lossless-claw', memory: 'memory-core' });
         expect(all.written.agents.entries['skyrim-e4b'].tools.allow).toContain('lossless-claw');
+
+        // --plugins: those it names load too, with their settings; the others stay out.
+        const named = session(userConfig(withPlugins), { agent: 'skyrim-e4b', plugins: ['lossless-claw', 'diffs'] });
+        expect(named.plugins).toEqual(['skyrim-modding-tools', 'ollama', 'lossless-claw', 'diffs']);
+        expect(named.written.plugins.allow).toEqual(['skyrim-modding-tools', 'ollama', 'lossless-claw', 'diffs']);
+        expect(named.written.plugins.slots).toEqual({ contextEngine: 'lossless-claw', memory: 'memory-core' });
+        expect(named.written.agents.entries['skyrim-e4b'].tools.allow).toEqual(['read', 'write', 'skyrim-modding-tools', 'diffs', 'lossless-claw']);
+        expect(() => session(userConfig(withPlugins), { agent: 'skyrim-e4b', plugins: ['lossless'] }))
+            .toThrow(/--plugins names lossless, which OpenClaw's configuration .* has no plugins\.entries for: its plugins are skyrim-modding-tools, lossless-claw, diffs, lobster/);
     });
 });
 

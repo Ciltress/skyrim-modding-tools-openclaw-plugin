@@ -276,7 +276,7 @@ function holdsPlugin(folder) {
  * plugin's config — the settings the eval's own reads of the instance use too.
  */
 export function writeSessionConfig({ dir, configFile, proxyUrl, provider: providerId = 'ollama', model, root, projectsDir, crashLogDir, papyrusLogDir, agent, profile,
-    allPlugins = false, blender = false }) {
+    allPlugins = false, plugins: extraPlugins = [], blender = false }) {
     let config;
     try {
         config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -390,8 +390,15 @@ export function writeSessionConfig({ dir, configFile, proxyUrl, provider: provid
     }
     // The plugins a run loads: this one and its model's provider's — not the user's others, search, ComfyUI, voice. Each run
     // started all of them: OpenClaw's start was 119 of round 128's 231 minutes, the model's turns 75. --all-plugins keeps them.
+    // --plugins names more of the user's plugins to load with them, their settings kept: the user's agents with lossless-claw,
+    // diffs and lobster (2026-11-20), measured beside the rounds without them.
+    const unknown = extraPlugins.filter(id => !config.plugins?.entries?.[id]);
+    if (unknown.length) {
+        throw new Error(`--plugins names ${unknown.join(', ')}, which OpenClaw's configuration ${configFile} has no plugins.entries for: ` +
+            `its plugins are ${Object.keys(config.plugins?.entries ?? {}).join(', ')}`);
+    }
     const plugins = allPlugins ? undefined
-        : [...new Set([PLUGIN_ID, provider.api === 'ollama' ? 'ollama' : /^openai/.test(provider.api ?? '') ? 'openai' : providerId])];
+        : [...new Set([PLUGIN_ID, provider.api === 'ollama' ? 'ollama' : /^openai/.test(provider.api ?? '') ? 'openai' : providerId, ...extraPlugins])];
     if (plugins) config.plugins.allow = plugins;
     // The user's plugins a run leaves out take their settings with them: lossless-claw, installed on 2026-11-20, set
     // plugins.slots.contextEngine to itself, an engine no run loads, and the agents' allow lists named it, diffs and lobster.
@@ -652,7 +659,9 @@ export async function runOpenClaw({ entry, prompt, provider = 'ollama', model, c
         ...(thinking ? ['--thinking', thinking] : [])
     ];
     const spawned = Date.now();
-    const child = spawn(process.execPath, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    // lossless-claw keeps its database at LCM_DATABASE_PATH, else beside OpenClaw's state: the run's, never the user's.
+    const env = { ...process.env, LCM_DATABASE_PATH: path.join(stateDir, 'lcm.db') };
+    const child = spawn(process.execPath, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', c => { stdout += c; });
